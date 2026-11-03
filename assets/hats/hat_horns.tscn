@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_horns"]
+albedo_color = Color(0.94902, 0.929412, 0.890196, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_horn"]
+material = SubResource("StandardMaterial3D_horns")
+top_radius = 0.03
+bottom_radius = 0.09
+height = 0.35
+
+[node name="HatHorns" type="Node3D"]
+
+[node name="HornLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.22, 0.18, 0)
+rotation = Vector3(0, 0, 0.5)
+mesh = SubResource("CylinderMesh_horn")
+
+[node name="HornRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.22, 0.18, 0)
+rotation = Vector3(0, 0, -0.5)
+mesh = SubResource("CylinderMesh_horn")

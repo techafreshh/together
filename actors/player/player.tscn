@@ -24,5 +24,8 @@ shape = SubResource("CapsuleShape3D_player")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = SubResource("CapsuleMesh_player")
 
+[node name="HatAnchor" type="Marker3D" parent="."]
+position = Vector3(0, 1.15, 0)
+
 [node name="Ragdoll" type="Node" parent="."]
 script = ExtResource("2_ragdoll")

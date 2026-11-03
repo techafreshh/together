@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_prop"]
+albedo_color = Color(0.466667, 0.780392, 0.85098, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_prop_base"]
+material = SubResource("StandardMaterial3D_prop")
+top_radius = 0.12
+bottom_radius = 0.16
+height = 0.18
+
+[sub_resource type="BoxMesh" id="BoxMesh_prop_blade"]
+material = SubResource("StandardMaterial3D_prop")
+size = Vector3(0.7, 0.03, 0.1)
+
+[node name="HatPropeller" type="Node3D"]
+
+[node name="Base" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.09, 0)
+mesh = SubResource("CylinderMesh_prop_base")
+
+[node name="BladeA" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.22, 0)
+mesh = SubResource("BoxMesh_prop_blade")
+
+[node name="BladeB" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.22, 0)
+rotation = Vector3(0, 1.570796, 0)
+mesh = SubResource("BoxMesh_prop_blade")
