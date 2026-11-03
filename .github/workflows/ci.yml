@@ -24,9 +24,30 @@ jobs:
         timeout-minutes: 5
         run: godot --headless --path . --import
 
+      - name: Parse all GDScript (--check-only, no execution)
+        timeout-minutes: 5
+        run: |
+          for f in $(find . -path ./.godot -prune -o -name '*.gd' -print); do godot --headless --path . --check-only --script "res://${f#.}"; done
+
       - name: Run GDScript unit tests
         timeout-minutes: 5
         run: godot --headless --path . --script res://tests/test_serve_logic.gd
+
+      - name: Skeleton health probe (GET / expects 200)
+        timeout-minutes: 5
+        run: |
+          PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+          godot --headless --path . -- --serve --port "$PORT" > /tmp/health_probe.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
+          for _i in $(seq 1 150); do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}/" || true)"
+            if [ "$CODE" = "200" ]; then break; fi
+            sleep 0.2
+          done
+          CODE="$(curl -s -o /tmp/health_body.json -w '%{http_code}' "http://127.0.0.1:${PORT}/")"
+          if [ "$CODE" != "200" ]; then echo "GET / expected 200, got $CODE"; cat /tmp/health_probe.log; exit 1; fi
+          python3 -c 'import json; b = json.load(open("/tmp/health_body.json")); assert b.get("ok") is True, b; assert "version" in b, b; print("GET / 200 ok:", b)'
 
       - name: Black-box smoke test
         timeout-minutes: 10
