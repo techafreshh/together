@@ -132,6 +132,13 @@ func _ready() -> void:
 	if cli.has("--selftest") and cli.has("wardrobe"):
 		_run_wardrobe_selftest()
 		return
+	var export_idx := cli.find("--export-check")
+	if export_idx >= 0 and export_idx + 1 < cli.size() and cli[export_idx + 1] == "web":
+		_run_export_check()
+		return
+	if cli.has("--selftest") and cli.has("export"):
+		_run_export_check()
+		return
 	if cli.has("--selftest") and cli.has("ui"):
 		_run_ui_selftest()
 		return
@@ -326,6 +333,67 @@ static func _compute_ws_accept(key: String) -> String:
 
 static func _build_health_body() -> String:
 	return JSON.stringify({"ok": true, "version": ConfigScript.VERSION})
+
+
+## --- Web export surface (issue #21, parse-level, no templates) ---
+## Socket-free static checks shared by the headless `--export-check web`
+## branch and the tests/test_export_logic.gd unit runner.
+
+## Scans cfg_path via ConfigFile for a preset.N section whose name
+## contains "Web" with platform == "Web". Returns {preset=0/1}.
+static func check_export_preset(cfg_path: String) -> Dictionary:
+	var cfg := ConfigFile.new()
+	if cfg.load(cfg_path) != OK:
+		return {"preset": 0}
+	for section in cfg.get_sections():
+		if not section.begins_with("preset.") or section.ends_with(".options"):
+			continue
+		var pname := str(cfg.get_value(section, "name", ""))
+		var platform := str(cfg.get_value(section, "platform", ""))
+		if pname.contains("Web") and platform == "Web":
+			return {"preset": 1}
+	return {"preset": 0}
+
+
+## Reads the Pages _headers file and requires both cross-origin isolation
+## policies. Returns {headers=0/1}.
+static func check_web_headers(headers_path: String) -> Dictionary:
+	if not FileAccess.file_exists(headers_path):
+		return {"headers": 0}
+	var text := FileAccess.get_file_as_string(headers_path)
+	if text.contains("Cross-Origin-Opener-Policy") and text.contains("Cross-Origin-Embedder-Policy"):
+		return {"headers": 1}
+	return {"headers": 0}
+
+
+## The standalone boot indicator must exist and mention loading.
+## Returns 1 on pass, 0 otherwise.
+static func check_loading_indicator(loading_path: String) -> int:
+	if not FileAccess.file_exists(loading_path):
+		return 0
+	if FileAccess.get_file_as_string(loading_path).to_lower().contains("loading"):
+		return 1
+	return 0
+
+
+## Offline web-export self-test (issue #21). The acceptance probe runs
+## `godot --headless --path . -- --export-check web`, which boots the main
+## scene, so the main-scene root owns this branch: run the three
+## parse-level static checks above (no export templates installed in CI)
+## and print the EXPORT_WEB_OK line shared with the probe. Quits 1 on any
+## failure; touches no request/route/health paths.
+func _run_export_check() -> void:
+	var preset := check_export_preset("res://export_presets.cfg")
+	var headers := check_web_headers("res://web/_headers")
+	var loading := check_loading_indicator("res://web/loading.html")
+	var p := int(preset.get("preset", 0))
+	var h := int(headers.get("headers", 0))
+	if p == 1 and h == 1 and loading == 1:
+		print("EXPORT_WEB_OK preset=%d headers=%d" % [p, h])
+		get_tree().quit(0)
+	else:
+		push_error("EXPORT_WEB_FAIL preset=%d headers=%d loading=%d" % [p, h, loading])
+		get_tree().quit(1)
 
 
 ## Offline controller self-test (issue #3). The acceptance probe runs
