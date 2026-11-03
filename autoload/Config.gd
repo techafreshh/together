@@ -10,8 +10,9 @@ const DEFAULT_PORT: int = 8080
 ## Parses OS.get_cmdline_user_args() style args (--serve flag, --port <n>
 ## value or --port=<n>). Invalid or missing ports fall back to DEFAULT_PORT.
 static func parse_serve_args(args: PackedStringArray) -> Dictionary:
-	var result: Dictionary = {"serve": false, "port": DEFAULT_PORT}
+	var result: Dictionary = {"serve": false, "port": DEFAULT_PORT, "net_port": 0}
 	var want_port_value := false
+	var want_net_value := false
 	for raw: String in args:
 		var arg := raw.strip_edges()
 		if want_port_value:
@@ -20,14 +21,26 @@ static func parse_serve_args(args: PackedStringArray) -> Dictionary:
 			if n > 0:
 				result["port"] = n
 			continue
+		if want_net_value:
+			want_net_value = false
+			var m := _parse_port(arg)
+			if m > 0:
+				result["net_port"] = m
+			continue
 		if arg == "--serve":
 			result["serve"] = true
 		elif arg == "--port":
 			want_port_value = true
+		elif arg == "--net-port":
+			want_net_value = true
 		elif arg.begins_with("--port="):
 			var inline := _parse_port(arg.get_slice("=", 1))
 			if inline > 0:
 				result["port"] = inline
+		elif arg.begins_with("--net-port="):
+			var net_inline := _parse_port(arg.get_slice("=", 1))
+			if net_inline > 0:
+				result["net_port"] = net_inline
 	return result
 
 
