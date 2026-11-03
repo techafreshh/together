@@ -10,14 +10,22 @@ const DEFAULT_PORT: int = 8080
 const MAX_ROOMS: int = 64
 const MIN_ROOM_PLAYERS: int = 2
 const MAX_ROOM_PLAYERS: int = 4
+## Server-side JSON persistence (issue #17): one file per display name.
+## `--data-dir` selects the directory (default `user://players`);
+## `--max-rooms` caps concurrent rooms (default MAX_ROOMS, clamped 1..256).
+const DEFAULT_DATA_DIR: String = "user://players"
+const MIN_MAX_ROOMS: int = 1
+const MAX_MAX_ROOMS: int = 256
 
 
 ## Parses OS.get_cmdline_user_args() style args (--serve flag, --port <n>
 ## value or --port=<n>). Invalid or missing ports fall back to DEFAULT_PORT.
 static func parse_serve_args(args: PackedStringArray) -> Dictionary:
-	var result: Dictionary = {"serve": false, "port": DEFAULT_PORT, "net_port": 0}
+	var result: Dictionary = {"serve": false, "port": DEFAULT_PORT, "net_port": 0, "data_dir": DEFAULT_DATA_DIR, "max_rooms": MAX_ROOMS}
 	var want_port_value := false
 	var want_net_value := false
+	var want_data_value := false
+	var want_max_value := false
 	for raw: String in args:
 		var arg := raw.strip_edges()
 		if want_port_value:
@@ -32,12 +40,28 @@ static func parse_serve_args(args: PackedStringArray) -> Dictionary:
 			if m > 0:
 				result["net_port"] = m
 			continue
+		if want_data_value:
+			want_data_value = false
+			var d := arg.strip_edges()
+			if d != "":
+				result["data_dir"] = d
+			continue
+		if want_max_value:
+			want_max_value = false
+			var r := _parse_max_rooms(arg)
+			if r > 0:
+				result["max_rooms"] = r
+			continue
 		if arg == "--serve":
 			result["serve"] = true
 		elif arg == "--port":
 			want_port_value = true
 		elif arg == "--net-port":
 			want_net_value = true
+		elif arg == "--data-dir":
+			want_data_value = true
+		elif arg == "--max-rooms":
+			want_max_value = true
 		elif arg.begins_with("--port="):
 			var inline := _parse_port(arg.get_slice("=", 1))
 			if inline > 0:
@@ -46,7 +70,25 @@ static func parse_serve_args(args: PackedStringArray) -> Dictionary:
 			var net_inline := _parse_port(arg.get_slice("=", 1))
 			if net_inline > 0:
 				result["net_port"] = net_inline
+		elif arg.begins_with("--data-dir="):
+			var data_inline := arg.get_slice("=", 1).strip_edges()
+			if data_inline != "":
+				result["data_dir"] = data_inline
+		elif arg.begins_with("--max-rooms="):
+			var max_inline := _parse_max_rooms(arg.get_slice("=", 1))
+			if max_inline > 0:
+				result["max_rooms"] = max_inline
 	return result
+
+
+static func _parse_max_rooms(text: String) -> int:
+	var t := text.strip_edges()
+	if not t.is_valid_int():
+		return -1
+	var n := t.to_int()
+	if n < MIN_MAX_ROOMS or n > MAX_MAX_ROOMS:
+		return -1
+	return n
 
 
 static func _parse_port(text: String) -> int:

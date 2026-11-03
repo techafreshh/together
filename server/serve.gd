@@ -41,6 +41,7 @@ const Stage08Script := preload("res://stages/world1/stage_08.gd")
 const NetServerScript := preload("res://server/net_server.gd")
 const RoomManagerScript := preload("res://server/room_manager.gd")
 const FlowManagerScript := preload("res://server/flow_manager.gd")
+const PersistenceScript := preload("res://server/persistence.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -53,6 +54,11 @@ const MAX_HEADER_BYTES := 16384
 var _server: TCPServer
 var _pending: Array = []
 var _port: int = 8080
+## Effective server data dir for JSON persistence (issue #17), owned by
+## _ready from ConfigScript.parse_serve_args (`--data-dir`, else default).
+var _data_dir: String = "user://players"
+## Effective concurrent-room cap (`--max-rooms`, else Config.MAX_ROOMS).
+var _max_rooms: int = 64
 ## Last accepted /ws join per client IP (msec); joins inside the
 ## NetServer cooldown window get 429 instead of a 101 upgrade.
 var _ws_join_msec_by_ip: Dictionary = {}
@@ -87,6 +93,9 @@ func _ready() -> void:
 	if cli.has("--selftest") and cli.has("flow"):
 		_run_flow_selftest()
 		return
+	if cli.has("--selftest") and cli.has("persist"):
+		_run_persist_selftest()
+		return
 	if cli.has("--selftest") and cli.has("resilience"):
 		_run_resilience_selftest()
 		return
@@ -111,13 +120,16 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	_port = int(parsed.get("port", ConfigScript.DEFAULT_PORT))
+	_data_dir = str(parsed.get("data_dir", ConfigScript.DEFAULT_DATA_DIR))
+	_max_rooms = int(parsed.get("max_rooms", ConfigScript.MAX_ROOMS))
+	PersistenceScript.ensure_dir(_data_dir)
 	_server = TCPServer.new()
 	var err := _server.listen(_port, "*")
 	if err != OK:
 		push_error("together: failed to listen on port %d (error %d)" % [_port, err])
 		get_tree().quit(1)
 		return
-	print("together: serving on port %d (health GET /, socket /ws)" % _port)
+	print("together: serving on port %d (health GET /, socket /ws) data_dir=%s" % [_port, _data_dir])
 	var net_port := int(parsed.get("net_port", 0))
 	if net_port <= 0:
 		net_port = _port + 1
@@ -487,6 +499,73 @@ func _run_flow_selftest() -> void:
 	else:
 		push_error("FLOW_FAIL failed=%d boot=%d all=%d res=%d guard=%d" % [failed, boot_ok, all_ok, res_ok, guard_ok])
 	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline persist self-test (issue #17). The acceptance probe runs
+## `godot --headless --path . -- --selftest persist --data-dir <tmp>`,
+## which boots the main scene, so the main-scene root owns this branch:
+## resolve the data dir from `--data-dir <p>` / `--data-dir=<p>` (falling
+## back to OS.get_temp_dir() when the flag is absent), delegate to the
+## tree-free PersistenceScript.run_selftest round-trip, and print the
+## PERSIST_OK line shared with the probe. Quits 1 on any failure; touches
+## no request/route/health paths.
+func _run_persist_selftest() -> void:
+	var cli: PackedStringArray = OS.get_cmdline_user_args()
+	var dir := ""
+	var has_flag := false
+	for i in range(cli.size()):
+		var a := cli[i].strip_edges()
+		if a == "--data-dir":
+			has_flag = true
+			if i + 1 < cli.size():
+				dir = cli[i + 1].strip_edges()
+		elif a.begins_with("--data-dir="):
+			has_flag = true
+			dir = a.get_slice("=", 1).strip_edges()
+	if not has_flag or dir == "":
+		if not has_flag:
+			dir = OS.get_temp_dir()
+		else:
+			var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
+			dir = str(parsed.get("data_dir", OS.get_temp_dir()))
+			if dir.strip_edges() == "":
+				dir = OS.get_temp_dir()
+	var result: Array = PersistenceScript.run_selftest(dir)
+	var failed := int(result[1])
+	if failed == 0:
+		print("PERSIST_OK coins=1 restart_survives=1")
+	else:
+		push_error("PERSIST_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Persistence edge helpers (issue #17): the live join/results path rides
+## the serve edge so room_manager/flow_manager stay pure. Load on join
+## returns the stored profile (defaults on first sight); save on results
+## records the clear, credits coins, and rewrites the JSON. Both are
+## warn-only on IO failure: they never 5xx, never quit.
+func _persist_load_on_join(display_name: String) -> Dictionary:
+	return PersistenceScript.load_player(_data_dir, display_name)
+
+
+func _persist_save_on_results(display_name: String, stage_id: String, best_ms: int, coins_awarded: int) -> bool:
+	var profile: Dictionary = PersistenceScript.load_player(_data_dir, display_name)
+	PersistenceScript.record_clear(profile, stage_id, best_ms)
+	PersistenceScript.add_coins(profile, coins_awarded)
+	if not PersistenceScript.save_player(_data_dir, display_name, profile):
+		push_warning("together: persist save failed for %s" % display_name)
+		return false
+	return true
+
+
+func _persist_save_on_purchase(display_name: String, item_id: String, price: int) -> Dictionary:
+	var profile: Dictionary = PersistenceScript.load_player(_data_dir, display_name)
+	var bought: Dictionary = PersistenceScript.try_purchase(profile, item_id, price)
+	if bool(bought.get("ok", false)):
+		if not PersistenceScript.save_player(_data_dir, display_name, profile):
+			push_warning("together: persist save failed for %s" % display_name)
+			return {"ok": false, "error": "save_failed"}
+	return bought
 
 
 ## Offline resilience self-test (issue #12). Drives 3 peers through the
