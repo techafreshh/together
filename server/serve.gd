@@ -30,6 +30,8 @@ const BoostScript := preload("res://actors/props/boost.gd")
 const SeesawScript := preload("res://actors/props/seesaw.gd")
 const LeverScript := preload("res://actors/props/lever.gd")
 const SfxScript := preload("res://autoload/Sfx.gd")
+const Stage01Script := preload("res://stages/world1/stage_01.gd")
+const Stage02Script := preload("res://stages/world1/stage_02.gd")
 const NetServerScript := preload("res://server/net_server.gd")
 const RoomManagerScript := preload("res://server/room_manager.gd")
 const FlowManagerScript := preload("res://server/flow_manager.gd")
@@ -81,6 +83,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("resilience"):
 		_run_resilience_selftest()
+		return
+	if cli.has("--selftest") and cli.has("stages12"):
+		_run_stages12_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -581,4 +586,62 @@ static func _header_end(buf: PackedByteArray) -> int:
 		if buf[i] == 13 and buf[i + 1] == 10 and buf[i + 2] == 13 and buf[i + 3] == 10:
 			return i
 	return -1
+
+
+## Offline stages12 self-test (issue #13). The acceptance probe runs
+## `godot --headless --path . -- --selftest stages12`, which boots the main
+## scene, so the main-scene root owns this branch: load the world-1
+## manifest via ConfigFile, run both stage run_selftest suites, prove the
+## bot predicates (stage_01 solo clears, stage_02 solo is blocked, duo
+## passes), and print the STAGES12_OK line shared with the probe. Quits
+## 1 on any failure; touches no request/route/health paths.
+func _run_stages12_selftest() -> void:
+	var failed := 0
+	var manifest := ConfigFile.new()
+	if manifest.load("res://stages/world1/manifest.cfg") != OK:
+		failed += 1
+		push_error("stages12 selftest: manifest.cfg failed to load")
+	else:
+		var stages: Array = manifest.get_value("world1", "stages", [])
+		if not (stages.has("w1s1") and stages.has("w1s2")):
+			failed += 1
+			push_error("stages12 selftest: manifest [world1] stages must list w1s1,w1s2")
+		if not manifest.has_section("w1s1") or not manifest.has_section("w1s2"):
+			failed += 1
+			push_error("stages12 selftest: manifest must carry [w1s1] and [w1s2] sections")
+		for section in ["w1s1", "w1s2"]:
+			for key in ["scaling_2", "scaling_3", "scaling_4"]:
+				if str(manifest.get_value(section, key, "")) == "":
+					failed += 1
+					push_error("stages12 selftest: manifest [%s] missing %s" % [section, key])
+		if int(manifest.get_value("w1s2", "hold_required", 0)) != Stage02Script.HOLD_REQUIRED:
+			failed += 1
+			push_error("stages12 selftest: manifest [w1s2] hold_required must be 2")
+	var r1: Array = Stage01Script.run_selftest()
+	failed += int(r1[1])
+	var r2: Array = Stage02Script.run_selftest()
+	failed += int(r2[1])
+	var s1_solo := "fail"
+	var s2_blocked := 0
+	var s2_duo := "fail"
+	if Stage01Script.solo_clear(2) and int(r1[1]) == 0:
+		s1_solo = "pass"
+	else:
+		failed += 1
+		push_error("stages12 selftest: stage_01 solo warmup must clear")
+	if not Stage02Script.gate_open(1):
+		s2_blocked = 1
+	else:
+		failed += 1
+		push_error("stages12 selftest: stage_02 gate must stay closed for 1 holder (solo blocked)")
+	if Stage02Script.gate_open(2) and int(r2[1]) == 0:
+		s2_duo = "pass"
+	else:
+		failed += 1
+		push_error("stages12 selftest: stage_02 gate must open for 2 holders (duo pass)")
+	if failed == 0:
+		print("STAGES12_OK s1_solo=pass s2_solo_blocked=1 s2_duo=pass")
+	else:
+		push_error("STAGES12_FAIL failed=%d s1_solo=%s s2_solo_blocked=%d s2_duo=%s" % [failed, s1_solo, s2_blocked, s2_duo])
+	get_tree().quit(1 if failed > 0 else 0)
 
