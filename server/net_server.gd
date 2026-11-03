@@ -239,27 +239,31 @@ func step_tick(dt: float) -> Dictionary:
 	return snap
 
 
-## Same-path broadcast plus a relay through the shared /root/Net autoload
-## path, which is the stable node path browser clients run. Guarded so a
+## Single broadcast via the shared /root/Net autoload path, which is the
+## stable node path browser clients run. The NetServer node path exists
+## only on the --serve host, so a same-path rpc could never land on a
+## client tree; the relay below is the only broadcast. Guarded so a
 ## missing bus never errors.
 func _broadcast_snapshots(snap: Dictionary) -> void:
 	if peer == null or not is_inside_tree():
 		return
-	push_snapshots.rpc(snap)
 	var bus := get_node_or_null("/root/Net")
 	if bus != null and bus.has_method("push_snapshots"):
 		bus.rpc("push_snapshots", snap)
 
 
 ## Stores one remote input_state under its sender id. Shared by the RPC
-## below and by the Net autoload relay; table-full just drops the avatar.
+## below and by the Net autoload relay. Only peers registered via
+## _on_game_peer_connected (which enforces the per-IP join cooldown and
+## the table cap) may uplink: unknown sender ids — including peers
+## rejected for flood — are dropped, so a rejected transport cannot
+## re-enter the sim in one input packet. Updates from registered peers
+## are always accepted.
 func store_remote_input(sender_id: int, state: Dictionary) -> void:
 	if sender_id <= 0:
 		return
-	if not _states.has(sender_id) and _states.size() >= MAX_PEERS:
-		return
 	if not _states.has(sender_id):
-		_states[sender_id] = {"p": Vector3.ZERO, "v": Vector3.ZERO}
+		return
 	_inputs[sender_id] = state
 
 
@@ -286,6 +290,10 @@ func _on_game_peer_connected(id: int) -> void:
 	var now := int(Time.get_ticks_msec())
 	var last := int(_join_msec_by_key.get(key, -1))
 	if not is_join_allowed(last, now):
+		_states.erase(id)
+		_inputs.erase(id)
+		if peer != null:
+			peer.disconnect_peer(id)
 		return
 	_join_msec_by_key[key] = now
 	if _states.size() < MAX_PEERS and not _states.has(id):
