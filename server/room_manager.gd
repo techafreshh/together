@@ -24,6 +24,9 @@ const SELFTEST_PLAYERS := 4
 
 var _rooms: Dictionary = {}
 var _next_player_id: int = 1
+## Concurrent-room cap override (issue #17): defaults to Config.MAX_ROOMS
+## so `--max-rooms` is effective without changing the const or call sites.
+var max_rooms: int = ConfigScript.MAX_ROOMS
 ## Stage-active flag per normalized code (issue #12): true while a stage_boot
 ## run owns the room. Mid-stage joiners hit the lobby_wait gate until the
 ## next stage_boot; defaults to inactive so lobby behavior is unchanged.
@@ -96,7 +99,7 @@ func _generate_code() -> String:
 ## Creates a room hosted by `host_name`, returning {ok, code, player_id}.
 ## Rejects when the Config.MAX_ROOMS concurrent-room cap is reached.
 func create_room(host_name: Variant, cosmetic_hash: Variant) -> Dictionary:
-	if _rooms.size() >= ConfigScript.MAX_ROOMS:
+	if _rooms.size() >= max_rooms:
 		return {"ok": false, "error": "rooms_full"}
 	var code := _generate_code()
 	while _rooms.has(code):
