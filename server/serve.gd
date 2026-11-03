@@ -21,6 +21,7 @@ extends Node
 const ConfigScript := preload("res://autoload/Config.gd")
 const ControllerScript := preload("res://actors/player/controller.gd")
 const RagdollScript := preload("res://actors/player/ragdoll.gd")
+const GrabberScript := preload("res://actors/player/grabber.gd")
 const TuningScript := preload("res://actors/player/tuning.gd")
 const StageBaseScript := preload("res://stages/common/stage_base.gd")
 const ButtonScript := preload("res://actors/props/button.gd")
@@ -56,6 +57,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("flop"):
 		_run_flop_selftest()
+		return
+	if cli.has("--selftest") and cli.has("grab"):
+		_run_grab_selftest()
 		return
 	if cli.has("--selftest") and cli.has("scaffold"):
 		_run_scaffold_selftest()
@@ -356,6 +360,25 @@ func _run_flop_selftest() -> void:
 		print("FLOP_OK respawn_ms=%d" % respawn_ms)
 	else:
 		push_error("FLOP_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline grab self-test (issue #7). The acceptance probe runs
+## `godot --headless --path . -- --selftest grab`, which boots the main
+## scene, so the main-scene root owns this branch: drive the grabber
+## holder state machine through grab -> slowed-carry -> throw with the
+## checks shared with the grab test stage and quit.
+func _run_grab_selftest() -> void:
+	var result: Array = GrabberScript.run_selftest()
+	var passed := int(result[0])
+	var failed := int(result[1])
+	var grabbed := 1 if failed == 0 else 0
+	var carried := 1 if failed == 0 else 0
+	var thrown := 1 if failed == 0 else 0
+	if failed == 0:
+		print("GRAB_OK grabbed=%d carried=%d thrown=%d" % [grabbed, carried, thrown])
+	else:
+		push_error("GRAB_FAIL grabbed=%d carried=%d thrown=%d failed=%d passed=%d" % [grabbed, carried, thrown, failed, passed])
 	get_tree().quit(1 if failed > 0 else 0)
 
 

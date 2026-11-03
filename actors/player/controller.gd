@@ -146,9 +146,15 @@ func _physics_process(delta: float) -> void:
 	var response: float = Tuning.ground_response
 	if not on_floor:
 		response *= Tuning.air_control
+	# Issue #7: carrying a mannequin slows the run. Guarded query so
+	# scenes without a Grabber child behave exactly as before.
+	var top_speed: float = Tuning.move_speed
+	var grabber := get_node_or_null("Grabber")
+	if grabber != null and grabber.has_method("is_carrying") and bool(grabber.call("is_carrying")):
+		top_speed *= Tuning.carry_speed_factor
 	var t := 1.0 - exp(-response * delta)
-	velocity.x = lerpf(velocity.x, wish.x * Tuning.move_speed, t)
-	velocity.z = lerpf(velocity.z, wish.z * Tuning.move_speed, t)
+	velocity.x = lerpf(velocity.x, wish.x * top_speed, t)
+	velocity.z = lerpf(velocity.z, wish.z * top_speed, t)
 	_pre_slide_vy = velocity.y
 	move_and_slide()
 	var landed := (not _was_on_floor) and is_on_floor()
