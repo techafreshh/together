@@ -149,6 +149,53 @@ func notify_goal(code: Variant, player_id: int) -> Dictionary:
 	return {"ok": true, "code": c, "goal_count": goals.size(), "goal_all": bool(flow.get("goal_all", false))}
 
 
+## Drops one player from the roster mid-stage (issue #12). When a stage is
+## active and the survivors drop below Config.MIN_ROOM_PLAYERS the same
+## stage re-boots for the survivors: fresh stage_boot, cleared goals,
+## bumped generation. Otherwise the stage continues for the survivors.
+func remove_player(code: Variant, player_id: int) -> Dictionary:
+	var c := normalize_code(code)
+	if not _flows.has(c):
+		return {"ok": false, "error": "unknown_code"}
+	var flow: Dictionary = _flows[c]
+	var roster: Array = flow.get("roster", [])
+	var pid := int(player_id)
+	if not roster.has(pid):
+		return {"ok": false, "error": "unknown_player"}
+	roster.erase(pid)
+	flow["roster"] = roster
+	var goals: Array = flow.get("goals", [])
+	if goals.has(pid):
+		goals.erase(pid)
+	flow["goals"] = goals
+	if roster.is_empty():
+		flow["goal_all"] = false
+	else:
+		var all_in := true
+		for member in roster:
+			if not goals.has(int(member)):
+				all_in = false
+				break
+		flow["goal_all"] = all_in
+	var n := roster.size()
+	var active_stage := str(flow.get("active_stage", ""))
+	if active_stage != "" and n < ConfigScript.MIN_ROOM_PLAYERS:
+		var spawn_map := {}
+		for i in range(roster.size()):
+			spawn_map[int(roster[i])] = posmod(i, ConfigScript.MAX_ROOM_PLAYERS)
+		var stage_boot := {
+			"stage_id": active_stage,
+			"checkpoints": checkpoints_for(active_stage),
+			"spawn_map": spawn_map,
+		}
+		flow["stage_boot"] = stage_boot
+		flow["goals"] = []
+		flow["goal_all"] = false
+		flow["gen"] = int(flow.get("gen", 0)) + 1
+		return {"ok": true, "code": c, "restarted": true, "continued": false, "stage_boot": stage_boot, "players": n}
+	return {"ok": true, "code": c, "restarted": false, "continued": true, "players": n}
+
+
 ## How many distinct roster players have reached the goal on the active run.
 func goal_count(code: Variant) -> int:
 	var c := normalize_code(code)

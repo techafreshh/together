@@ -24,6 +24,13 @@ const SELFTEST_PLAYERS := 4
 
 var _rooms: Dictionary = {}
 var _next_player_id: int = 1
+## Stage-active flag per normalized code (issue #12): true while a stage_boot
+## run owns the room. Mid-stage joiners hit the lobby_wait gate until the
+## next stage_boot; defaults to inactive so lobby behavior is unchanged.
+var _stage_active: Dictionary = {}
+## Wire-shaped outbox of room_state / game_event transitions (issue #12).
+## The future net lap drains it; drain_events() returns and clears it.
+var _events: Array = []
 
 
 ## True when code is a 4-char string drawn fully from CODE_ALPHABET.
@@ -101,7 +108,10 @@ func create_room(host_name: Variant, cosmetic_hash: Variant) -> Dictionary:
 		"host_id": player_id,
 		"screen": "lobby",
 		"players": [_make_player(player_id, host_name, cosmetic_hash)],
+		"stage_boot": {},
 	}
+	_emit_room_state(code)
+	_emit_game_event(code, "room_created", {"player_id": player_id})
 	return {"ok": true, "code": code, "player_id": player_id}
 
 
@@ -117,9 +127,17 @@ func join_room(code: Variant, player_name: Variant, cosmetic_hash: Variant) -> D
 	var players: Array = room["players"]
 	if players.size() >= ConfigScript.MAX_ROOM_PLAYERS:
 		return {"ok": false, "error": "room_full"}
+	# Late-join gate (issue #12): while the stage_boot run is active the
+	# joiner waits in the lobby until the next stage_boot; they are NOT added.
+	if bool(_stage_active.get(c, false)):
+		_emit_room_state(c)
+		_emit_game_event(c, "lobby_wait", {"stage_boot": ((room.get("stage_boot", {}) as Dictionary).duplicate(true))})
+		return {"ok": false, "error": "lobby_wait", "code": c}
 	var player_id := _next_player_id
 	_next_player_id += 1
 	players.append(_make_player(player_id, player_name, cosmetic_hash))
+	_emit_room_state(c)
+	_emit_game_event(c, "player_joined", {"player_id": player_id})
 	return {"ok": true, "code": c, "player_id": player_id}
 
 
@@ -143,10 +161,15 @@ func leave_room(code: Variant, player_id: int) -> Dictionary:
 	players.remove_at(idx)
 	if players.is_empty():
 		_rooms.erase(c)
-		return {"ok": true, "code": c, "erased": true}
+		_stage_active.erase(c)
+		_events.append({"msg": "room_state", "code": c, "room_state": {"code": c, "players": [], "host_id": 0, "screen": "lobby"}})
+		_emit_game_event(c, "player_left", {"player_id": player_id, "players_remaining": 0, "erased": true})
+		return {"ok": true, "code": c, "erased": true, "players_remaining": 0}
 	if int(room.get("host_id", 0)) == player_id:
 		room["host_id"] = int((players[0] as Dictionary).get("id", 0))
-	return {"ok": true, "code": c, "erased": false}
+	_emit_room_state(c)
+	_emit_game_event(c, "player_left", {"player_id": player_id, "players_remaining": players.size(), "erased": false})
+	return {"ok": true, "code": c, "erased": false, "players_remaining": players.size()}
 
 
 ## Toggles the ready badge persisted on the player inside the room.
@@ -161,8 +184,66 @@ func set_ready(code: Variant, player_id: int, ready: bool) -> Dictionary:
 		var entry: Dictionary = p
 		if int(entry.get("id", 0)) == player_id:
 			entry["ready"] = bool(ready)
+			_emit_room_state(c)
+			_emit_game_event(c, "player_ready", {"player_id": player_id, "ready": bool(ready)})
 			return {"ok": true, "code": c, "player_id": player_id, "ready": bool(ready)}
 	return {"ok": false, "error": "unknown_player"}
+
+
+## Flips the room between lobby and stage (issue #12) and records the
+## stage_boot handoff on the room while active. Emits one room_state plus
+## one game_event (stage_started / stage_ended, or the caller-supplied name
+## such as stage_restarted carrying the stage_boot).
+func set_stage_active(code: Variant, active: bool, stage_boot: Dictionary = {}, event: String = "") -> Dictionary:
+	var c := normalize_code(code)
+	if not is_valid_code(c):
+		return {"ok": false, "error": "invalid_code"}
+	if not _rooms.has(c):
+		return {"ok": false, "error": "unknown_code"}
+	var room: Dictionary = _rooms[c]
+	_stage_active[c] = bool(active)
+	if bool(active):
+		room["screen"] = "stage"
+		room["stage_boot"] = (stage_boot as Dictionary).duplicate(true)
+	else:
+		room["screen"] = "lobby"
+	var event_name := event
+	if event_name == "":
+		event_name = "stage_started" if bool(active) else "stage_ended"
+	_emit_room_state(c)
+	if bool(active):
+		_emit_game_event(c, event_name, {"stage_boot": (stage_boot as Dictionary).duplicate(true)})
+	else:
+		_emit_game_event(c, event_name, {})
+	return {"ok": true, "code": c, "stage_active": bool(active), "screen": str(room.get("screen", ""))}
+
+
+## True while the room runs under an active stage_boot.
+func is_stage_active(code: Variant) -> bool:
+	var c := normalize_code(code)
+	return bool(_stage_active.get(c, false))
+
+
+func _emit_room_state(code: String) -> void:
+	var snap: Dictionary = room_state(code)
+	if bool(snap.get("ok", false)):
+		_events.append({"msg": "room_state", "code": code, "room_state": (snap.get("room_state", {}) as Dictionary).duplicate(true)})
+	else:
+		_events.append({"msg": "room_state", "code": code, "room_state": {}})
+
+
+func _emit_game_event(code: String, event_name: String, data: Dictionary = {}) -> void:
+	var entry := {"msg": "game_event", "code": code, "event": event_name}
+	for k in data.keys():
+		entry[k] = data[k]
+	_events.append(entry)
+
+
+## Returns and clears the wire-shaped room_state / game_event outbox.
+func drain_events() -> Array:
+	var out: Array = _events.duplicate()
+	_events.clear()
+	return out
 
 
 ## Returns {ok, room_state} where room_state carries {code, players, host_id,
