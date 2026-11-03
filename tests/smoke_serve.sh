@@ -80,7 +80,6 @@ while b"\r\n\r\n" not in resp:
         break
     resp += chunk
 dt = time.monotonic() - t0
-s.close()
 head = resp.split(b"\r\n\r\n")[0].decode("latin1")
 lines = head.split("\r\n")
 assert "101" in lines[0], f"expected 101, got {lines[0]!r}"
@@ -93,7 +92,19 @@ expected = base64.b64encode(
 ).decode()
 assert accept == expected, f"accept mismatch {accept!r} != {expected!r}"
 assert dt < 2.0, f"/ws took {dt:.2f}s"
-print(f"ws 101 ok ({dt * 1000:.0f}ms)")
+# The handshake response must complete promptly (server closes after 101)
+# so plain-HTTP clients waiting for EOF never hang.
+s.settimeout(5)
+t1 = time.monotonic()
+try:
+    tail = s.recv(4096)
+except socket.timeout:
+    raise SystemExit("timed out waiting for /ws close after 101")
+dt2 = time.monotonic() - t1
+assert tail == b"", f"expected EOF after 101, got {tail!r}"
+assert dt2 < 5.0, f"/ws close took {dt2:.2f}s"
+s.close()
+print(f"ws 101 ok ({dt * 1000:.0f}ms, close {dt2 * 1000:.0f}ms)")
 EOF
 
 python3 - <<'EOF' || exit 1

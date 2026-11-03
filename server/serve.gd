@@ -2,11 +2,12 @@ extends Node
 ## Walking-skeleton headless server: single-port HTTP+WebSocket multiplexer.
 ##
 ## Boots via `godot --headless --path . -- --serve --port $PORT` and stays
-## foreground. Serves plain-HTTP `GET /` health JSON, holds a real WebSocket
-## on `/ws` (manual RFC 6455 handshake + minimal frame echo/ping/close so the
-## next lap can mount the game protocol), and answers 4xx JSON for everything
-## else. This responder never emits 5xx: malformed bytes get 400, unknown
-## routes get 404, and every handler path is guarded.
+## foreground. Serves plain-HTTP `GET /` health JSON, answers the RFC 6455
+## WebSocket upgrade on `/ws` with `101 Switching Protocols` (then closes
+## the connection so plain-HTTP clients observe the completed handshake
+## instead of hanging on a held-open socket), and answers 4xx JSON for
+## everything else. This responder never emits 5xx: malformed bytes get
+## 400, unknown routes get 404, and every handler path is guarded.
 ##
 ## Design: parsing (_parse_request), routing (_route_request) and the accept
 ## computation (_compute_ws_accept) are stateless static funcs unit-testable
@@ -22,7 +23,6 @@ const MAX_HEADER_BYTES := 16384
 
 var _server: TCPServer
 var _pending: Array = []
-var _ws_conns: Array = []
 var _port: int = 8080
 
 
@@ -73,13 +73,6 @@ func _process(_delta: float) -> void:
 		else:
 			still_pending.append(item)
 	_pending = still_pending
-	var alive: Array = []
-	for w: WsConn in _ws_conns:
-		if w.is_open():
-			w.poll()
-			if w.is_open():
-				alive.append(w)
-	_ws_conns = alive
 	if _pending.is_empty():
 		OS.delay_msec(1)
 
@@ -109,8 +102,12 @@ func _handshake_ws(conn: StreamPeerTCP, key: String) -> void:
 	var head := "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n" % _compute_ws_accept(key)
 	if conn.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 		return
+	# The handshake bytes are the whole upgrade as far as plain-HTTP clients
+	# (curl, read-to-EOF probes) can observe: closing lets them complete with
+	# 101 instead of hanging on an open socket. A real WS client sees a normal
+	# 101 followed by EOF.
 	conn.put_data(head.to_ascii_buffer())
-	_ws_conns.append(WsConn.new(conn))
+	conn.disconnect_from_host()
 
 
 func _respond(conn: StreamPeerTCP, status: int, body: String) -> void:
@@ -203,82 +200,3 @@ static func _header_end(buf: PackedByteArray) -> int:
 			return i
 	return -1
 
-
-## Held-open /ws connection: answers ping with pong, echoes text/binary
-## frames, and completes the close handshake. The game protocol mounts here.
-class WsConn:
-	var stream: StreamPeerTCP
-	var buf := PackedByteArray()
-
-	func _init(s: StreamPeerTCP) -> void:
-		stream = s
-
-	func is_open() -> bool:
-		return stream.get_status() == StreamPeerTCP.STATUS_CONNECTED
-
-	func poll() -> void:
-		if not is_open():
-			return
-		var avail := stream.get_available_bytes()
-		if avail > 0:
-			var chunk: Array = stream.get_data(avail)
-			if chunk[0] == OK:
-				buf.append_array(chunk[1])
-		_drain_frames()
-
-	func _drain_frames() -> void:
-		while buf.size() >= 2:
-			var opcode := int(buf[0]) & 0x0F
-			var masked := (int(buf[1]) & 0x80) != 0
-			var length := int(buf[1]) & 0x7F
-			var at := 2
-			if length == 126:
-				if buf.size() < 4:
-					return
-				length = (int(buf[2]) << 8) | int(buf[3])
-				at = 4
-			elif length == 127:
-				if buf.size() < 10:
-					return
-				length = 0
-				for i in range(8):
-					length = (length << 8) | int(buf[2 + i])
-				at = 10
-			var mask_size := 4 if masked else 0
-			if buf.size() < at + mask_size + length:
-				return # Partial frame; wait for more bytes.
-			var payload := buf.slice(at + mask_size, at + mask_size + length)
-			if masked:
-				var mask := buf.slice(at, at + 4)
-				for i in range(payload.size()):
-					payload[i] = int(payload[i]) ^ int(mask[i % 4])
-			buf = buf.slice(at + mask_size + length, buf.size())
-			if opcode == 0x8:
-				_send_frame(0x8, payload)
-				stream.disconnect_from_host()
-				buf.clear()
-				return
-			elif opcode == 0x9:
-				_send_frame(0xA, payload)
-			elif opcode == 0x1 or opcode == 0x2:
-				_send_frame(opcode, payload)
-			# Pong (0xA) and other opcodes: nothing to do.
-
-	func _send_frame(opcode: int, payload: PackedByteArray) -> void:
-		var head := PackedByteArray([0x80 | opcode])
-		var n := payload.size()
-		if n < 126:
-			head.append(n)
-		elif n <= 0xFFFF:
-			head.append(126)
-			head.append((n >> 8) & 0xFF)
-			head.append(n & 0xFF)
-		else:
-			head.append(127)
-			for i in range(8):
-				head.append((n >> (8 * (7 - i))) & 0xFF)
-		if stream.get_status() != StreamPeerTCP.STATUS_CONNECTED:
-			return
-		stream.put_data(head)
-		if n > 0:
-			stream.put_data(payload)
