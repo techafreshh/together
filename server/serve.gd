@@ -28,6 +28,7 @@ const SequenceScript := preload("res://actors/props/sequence_buttons.gd")
 const BoostScript := preload("res://actors/props/boost.gd")
 const SeesawScript := preload("res://actors/props/seesaw.gd")
 const LeverScript := preload("res://actors/props/lever.gd")
+const SfxScript := preload("res://autoload/Sfx.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -55,6 +56,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("props"):
 		_run_props_selftest()
+		return
+	if cli.has("--selftest") and cli.has("sfx"):
+		_run_sfx_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -272,6 +276,16 @@ func _run_props_selftest() -> void:
 		print("PROP_OK button=1 sequence=1 boost=1 seesaw=1 lever=1")
 	else:
 		push_error("PROP_FAIL button=%d sequence=%d boost=%d seesaw=%d lever=%d" % [button_ok, sequence_ok, boost_ok, seesaw_ok, lever_ok])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+func _run_sfx_selftest() -> void:
+	var result: Array = SfxScript.run_selftest()
+	var failed := int(result[1])
+	if failed == 0:
+		print("SFX_OK count=%d" % SfxScript.sfx_count())
+	else:
+		push_error("SFX_FAIL failed=%d" % failed)
 	get_tree().quit(1 if failed > 0 else 0)
 
 

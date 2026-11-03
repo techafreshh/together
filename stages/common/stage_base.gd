@@ -40,6 +40,16 @@ func _on_kill_body(body: Node) -> void:
 		body.call("respawn")
 
 
+## Guarded SFX hook: plays through the Sfx autoload when present, silent
+## otherwise so scene instantiations without autoloads never error.
+func _play_sfx(sfx_name: String) -> void:
+	if not is_inside_tree():
+		return
+	var bus := get_node_or_null("/root/Sfx")
+	if bus != null and bus.has_method("play"):
+		bus.call("play", sfx_name)
+
+
 ## Ordered spawn markers (Spawn1..Spawn4) for roster placement.
 func get_spawn_points() -> Array:
 	var out: Array = []
@@ -77,6 +87,7 @@ func notify_checkpoint(checkpoint_id: String, player: Node) -> void:
 				pos = (c as Node3D).global_position
 				break
 		player.call("set_checkpoint", pos)
+	_play_sfx("checkpoint")
 
 
 ## Goal volumes call this on enter; deduped by instance id. Emits
@@ -91,6 +102,7 @@ func notify_goal_entered(player: Node) -> void:
 	goal_reached.emit(player)
 	if goal_count() >= expected_players:
 		goal_all_reached.emit()
+	_play_sfx("goal")
 
 
 ## Goal volumes call this on exit; completion breaks until all return.

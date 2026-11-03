@@ -44,12 +44,23 @@ func kill() -> void:
 		return
 	is_flopped = true
 	flop_time_left = float(Tuning.respawn_delay_ms) / 1000.0
+	_play_sfx("flop")
 	var ragdoll := get_node_or_null("Ragdoll")
 	if ragdoll != null:
 		if ragdoll.has_method("play_flop"):
 			ragdoll.call("play_flop", self)
 		if ragdoll.has_method("play_flop_sfx"):
 			ragdoll.call("play_flop_sfx")
+
+
+## Guarded SFX hook: plays through the Sfx autoload when present, silent
+## otherwise so unit-test instantiations without autoloads never error.
+func _play_sfx(sfx_name: String) -> void:
+	if not is_inside_tree():
+		return
+	var bus := get_node_or_null("/root/Sfx")
+	if bus != null and bus.has_method("play"):
+		bus.call("play", sfx_name)
 
 
 ## Restores the player at the last checkpoint with control. Called by the
@@ -98,6 +109,7 @@ func _physics_process(delta: float) -> void:
 	# Consume both so one press can never double-jump.
 	if buffer_timer > 0.0 and coyote_timer > 0.0:
 		velocity.y = Tuning.jump_velocity
+		_play_sfx("jump")
 		buffer_timer = 0.0
 		coyote_timer = 0.0
 
