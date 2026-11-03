@@ -1,0 +1,36 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://actors/props/button.gd" id="1_button"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_btn_vol"]
+size = Vector3(1.2, 1.2, 1.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_btn_base"]
+albedo_color = Color(0.890196, 0.717647, 0.419608, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_btn_base"]
+material = SubResource("StandardMaterial3D_btn_base")
+size = Vector3(1.2, 0.3, 1.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_btn_plunger"]
+albedo_color = Color(0.85098, 0.364706, 0.223529, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_btn_plunger"]
+material = SubResource("StandardMaterial3D_btn_plunger")
+radius = 0.3
+height = 0.8
+
+[node name="Button" type="Area3D"]
+script = ExtResource("1_button")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.6, 0)
+shape = SubResource("BoxShape3D_btn_vol")
+
+[node name="BaseMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.15, 0)
+mesh = SubResource("BoxMesh_btn_base")
+
+[node name="PlungerMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.7, 0)
+mesh = SubResource("CapsuleMesh_btn_plunger")

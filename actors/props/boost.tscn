@@ -1,0 +1,35 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://actors/props/boost.gd" id="1_boost"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_boost_vol"]
+size = Vector3(2, 0.6, 2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_boost_pad"]
+albedo_color = Color(1, 0.717647, 0.011765, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_boost_pad"]
+material = SubResource("StandardMaterial3D_boost_pad")
+size = Vector3(2, 0.2, 2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_boost_stand"]
+albedo_color = Color(0.133333, 0.2, 0.231373, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_boost_stand"]
+material = SubResource("StandardMaterial3D_boost_stand")
+size = Vector3(0.4, 0.6, 0.4)
+
+[node name="Boost" type="Area3D"]
+script = ExtResource("1_boost")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.3, 0)
+shape = SubResource("BoxShape3D_boost_vol")
+
+[node name="PadMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.2, 0)
+mesh = SubResource("BoxMesh_boost_pad")
+
+[node name="StandMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.2, 0)
+mesh = SubResource("BoxMesh_boost_stand")
