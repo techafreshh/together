@@ -33,6 +33,9 @@ const SELFTEST_PEERS := 2
 var peer: WebSocketMultiplayerPeer
 var _states: Dictionary = {}
 var _inputs: Dictionary = {}
+## Equipped look per peer id ({hat, skin} subset); replicated as the
+## optional `cos` field inside make_snapshot peer entries (issue #18).
+var _cosmetics: Dictionary = {}
 var _tick: int = 0
 var _accum: float = 0.0
 var _join_msec_by_key: Dictionary = {}
@@ -48,13 +51,18 @@ static func make_input_state(tick: int, move: Vector2, jump: bool) -> Dictionary
 
 ## Builds one authoritative snapshots dict from sim states.
 ## states: {id: {"p": Vector3, "v": Vector3}}.
-static func make_snapshot(tick: int, states: Dictionary) -> Dictionary:
+## cosmetics: {id: {"hat": String, "skin": String}}; each peer entry gains
+## an optional `cos` {hat, skin} only when set, so old two-arg callers keep
+## their exact {p, v} byte-shape.
+static func make_snapshot(tick: int, states: Dictionary, cosmetics: Dictionary = {}) -> Dictionary:
 	var peers := {}
 	for id in states.keys():
 		var entry: Dictionary = states[id]
 		var p: Vector3 = entry.get("p", Vector3.ZERO)
 		var v: Vector3 = entry.get("v", Vector3.ZERO)
 		peers[id] = {"p": [p.x, p.y, p.z], "v": [v.x, v.y, v.z]}
+		if cosmetics.has(id) and cosmetics[id] is Dictionary and not (cosmetics[id] as Dictionary).is_empty():
+			peers[id]["cos"] = (cosmetics[id] as Dictionary).duplicate(true)
 	return {"tick": tick, "peers": peers}
 
 
@@ -212,6 +220,7 @@ func stop_game_socket() -> void:
 		multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	_states.clear()
 	_inputs.clear()
+	_cosmetics.clear()
 	_tick = 0
 	_accum = 0.0
 
@@ -230,11 +239,29 @@ func _process(delta: float) -> void:
 		step_tick(step)
 
 
+## Records the equipped look replicated inside snapshots for `peer_id`.
+## Empty dicts clear the entry (the peer renders the default look).
+func set_cosmetic(peer_id: int, equipped: Dictionary) -> void:
+	if peer_id <= 0:
+		return
+	if equipped.is_empty():
+		_cosmetics.erase(peer_id)
+	else:
+		_cosmetics[peer_id] = equipped.duplicate(true)
+
+
+## Equipped look stored for `peer_id`; {} when unset.
+func cosmetic_for(peer_id: int) -> Dictionary:
+	if _cosmetics.has(peer_id) and _cosmetics[peer_id] is Dictionary:
+		return (_cosmetics[peer_id] as Dictionary).duplicate(true)
+	return {}
+
+
 ## Advances the authoritative tick once and broadcasts snapshots.
 func step_tick(dt: float) -> Dictionary:
 	_tick += 1
 	_states = simulate_step(_states, _inputs, dt)
-	var snap := make_snapshot(_tick, _states)
+	var snap := make_snapshot(_tick, _states, _cosmetics)
 	_broadcast_snapshots(snap)
 	return snap
 
@@ -303,3 +330,4 @@ func _on_game_peer_connected(id: int) -> void:
 func _on_game_peer_disconnected(id: int) -> void:
 	_states.erase(id)
 	_inputs.erase(id)
+	_cosmetics.erase(id)

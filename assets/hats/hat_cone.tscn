@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cone"]
+albedo_color = Color(1, 0.717647, 0.011765, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_cone"]
+material = SubResource("StandardMaterial3D_cone")
+top_radius = 0.05
+bottom_radius = 0.28
+height = 0.45
+
+[node name="HatCone" type="Node3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.22, 0)
+mesh = SubResource("CylinderMesh_cone")

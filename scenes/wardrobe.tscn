@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_preview"]
+albedo_color = Color(0.94902, 0.929412, 0.890196, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_preview"]
+material = SubResource("StandardMaterial3D_preview")
+radius = 0.4
+height = 1.7
+
+[node name="Wardrobe" type="Node3D"]
+
+[node name="HatAnchor" type="Marker3D" parent="."]
+
+[node name="SkinPreview" type="MeshInstance3D" parent="."]
+mesh = SubResource("CapsuleMesh_preview")

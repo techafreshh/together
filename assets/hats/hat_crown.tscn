@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_crown"]
+albedo_color = Color(1, 0.717647, 0.011765, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_crown"]
+material = SubResource("StandardMaterial3D_crown")
+top_radius = 0.3
+bottom_radius = 0.24
+height = 0.25
+
+[sub_resource type="SphereMesh" id="SphereMesh_crown_jewel"]
+material = SubResource("StandardMaterial3D_crown")
+radius = 0.08
+height = 0.16
+
+[node name="HatCrown" type="Node3D"]
+
+[node name="Band" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.12, 0)
+mesh = SubResource("CylinderMesh_crown")
+
+[node name="Jewel" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.14, 0.27)
+mesh = SubResource("SphereMesh_crown_jewel")

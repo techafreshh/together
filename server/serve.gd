@@ -42,6 +42,8 @@ const NetServerScript := preload("res://server/net_server.gd")
 const RoomManagerScript := preload("res://server/room_manager.gd")
 const FlowManagerScript := preload("res://server/flow_manager.gd")
 const PersistenceScript := preload("res://server/persistence.gd")
+const WardrobeScript := preload("res://server/wardrobe.gd")
+const CosmeticsScript := preload("res://actors/player/cosmetics.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -113,6 +115,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("world14"):
 		_run_world14_selftest()
+		return
+	if cli.has("--selftest") and cli.has("wardrobe"):
+		_run_wardrobe_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -1240,3 +1245,130 @@ func _run_stages56_selftest() -> void:
 		push_error("STAGES56_FAIL failed=%d s5_weight=%d s6_carry=%d s6_solo_blocked=%d" % [failed, s5_weight, s6_carry, s6_solo_blocked])
 	get_tree().quit(1 if failed > 0 else 0)
 
+
+
+## Offline wardrobe self-test (issue #18). The acceptance probe runs
+## `godot --headless --path . -- --selftest wardrobe`, which boots the main
+## scene, so the main-scene root owns this branch: count the on-disk hat
+## scenes and skin cfgs, fund an in-memory profile with one full run of
+## coins, purchase hat_cone plus the cheapest skin, equip both, attach the
+## hat to a probe player and assert visibility, print the WARDROBE_OK line
+## plus the player JSON (which must carry "owned" and hat_cone), then prove
+## cosmetic replication across 2 room peers through the NetServer snapshot
+## `cos` field and print COSMETIC_REPL_OK. Quits 1 on any failure; needs no
+## --data-dir and touches no request/route/health paths.
+func _run_wardrobe_selftest() -> void:
+	var failed := 0
+	var shared: Array = WardrobeScript.run_selftest()
+	failed += int(shared[1])
+	var hats := WardrobeScript.hats_count()
+	var skins := WardrobeScript.skins_count()
+	if hats < 6 or hats > 10:
+		failed += 1
+		push_error("wardrobe selftest: expected 6-10 hats on disk (got %d)" % hats)
+	if skins != 4:
+		failed += 1
+		push_error("wardrobe selftest: expected 4 skins on disk (got %d)" % skins)
+	var profile: Dictionary = WardrobeScript.default_profile()
+	profile["coins"] = WardrobeScript.full_run_coins()
+	var bought_hat: Dictionary = WardrobeScript.try_purchase(profile, "hat_cone")
+	var cheapest_skin := "charcoal"
+	var cheapest_price := 1 << 30
+	for skin_id in WardrobeScript.SKIN_IDS:
+		var price := WardrobeScript.price_for(skin_id)
+		if price >= 0 and price < cheapest_price:
+			cheapest_price = price
+			cheapest_skin = str(skin_id)
+	var bought_skin: Dictionary = WardrobeScript.try_purchase(profile, cheapest_skin)
+	var purchase := 0
+	if bool(bought_hat.get("ok", false)) and bool(bought_skin.get("ok", false)):
+		purchase = 1
+	else:
+		failed += 1
+		push_error("wardrobe selftest: funded profile must buy hat_cone + %s" % cheapest_skin)
+	var wear_hat: Dictionary = WardrobeScript.equip(profile, "hat", "hat_cone")
+	var wear_skin: Dictionary = WardrobeScript.equip(profile, "skin", cheapest_skin)
+	if not (bool(wear_hat.get("ok", false)) and bool(wear_skin.get("ok", false))):
+		failed += 1
+		push_error("wardrobe selftest: owned hat+skin must equip")
+	var equip_visible := 0
+	var probe_packed: PackedScene = load("res://actors/player/player.tscn") as PackedScene
+	if probe_packed == null:
+		failed += 1
+		push_error("wardrobe selftest: player.tscn failed to load")
+	else:
+		var probe: Node = probe_packed.instantiate() as Node
+		if probe == null:
+			failed += 1
+			push_error("wardrobe selftest: player failed to instantiate")
+		else:
+			if probe.get_node_or_null("HatAnchor") == null:
+				failed += 1
+				push_error("wardrobe selftest: player misses HatAnchor")
+			if not CosmeticsScript.attach_hat(probe, "hat_cone"):
+				failed += 1
+				push_error("wardrobe selftest: attach_hat hat_cone failed")
+			if not CosmeticsScript.apply_skin(probe, cheapest_skin):
+				failed += 1
+				push_error("wardrobe selftest: apply_skin %s failed" % cheapest_skin)
+			if CosmeticsScript.is_hat_visible(probe):
+				equip_visible = 1
+			else:
+				failed += 1
+				push_error("wardrobe selftest: equipped hat must be visible")
+			probe.free()
+	var showroom: PackedScene = load("res://scenes/wardrobe.tscn") as PackedScene
+	if showroom == null:
+		failed += 1
+		push_error("wardrobe selftest: scenes/wardrobe.tscn failed to load")
+	else:
+		var room_node: Node = showroom.instantiate() as Node
+		if room_node == null or room_node.get_node_or_null("HatAnchor") == null or room_node.get_node_or_null("SkinPreview") == null:
+			failed += 1
+			push_error("wardrobe selftest: wardrobe showroom must carry HatAnchor + SkinPreview")
+		elif room_node != null:
+			room_node.free()
+	if failed == 0 and purchase == 1 and equip_visible == 1:
+		print("WARDROBE_OK hats=%d skins=%d purchase=1 equip_visible=1" % [hats, skins])
+	else:
+		push_error("WARDROBE_FAIL failed=%d hats=%d skins=%d purchase=%d equip_visible=%d" % [failed, hats, skins, purchase, equip_visible])
+	print(JSON.stringify(profile))
+	var repl_ok := 0
+	var rooms = RoomManagerScript.new()
+	var created: Dictionary = rooms.create_room("Host", "hash-host")
+	var code := str(created.get("code", ""))
+	var host_id := int(created.get("player_id", 0))
+	var joined: Dictionary = rooms.join_room(code, "Guest", "hash-guest")
+	var guest_id := int(joined.get("player_id", 0))
+	if bool(created.get("ok", false)) and bool(joined.get("ok", false)) and code != "":
+		var net = NetServerScript.new()
+		net.set_cosmetic(host_id, {"hat": "hat_cone", "skin": "charcoal"})
+		net.set_cosmetic(guest_id, {"hat": "hat_crown", "skin": "mint"})
+		if str(net.cosmetic_for(host_id).get("hat", "")) != "hat_cone":
+			failed += 1
+			push_error("wardrobe selftest: cosmetic_for must echo the host hat")
+		var states := {
+			host_id: {"p": Vector3.ZERO, "v": Vector3.ZERO},
+			guest_id: {"p": Vector3(1.0, 0.0, 0.0), "v": Vector3.ZERO},
+		}
+		var cos := {}
+		cos[host_id] = net.cosmetic_for(host_id)
+		cos[guest_id] = net.cosmetic_for(guest_id)
+		var snap: Dictionary = NetServerScript.make_snapshot(1, states, cos)
+		var peers: Dictionary = snap.get("peers", {})
+		var host_cos: Dictionary = (peers.get(host_id, {}) as Dictionary).get("cos", {})
+		var guest_cos: Dictionary = (peers.get(guest_id, {}) as Dictionary).get("cos", {})
+		if str(host_cos.get("hat", "")) == "hat_cone" and str(guest_cos.get("hat", "")) == "hat_crown" and str(host_cos.get("skin", "")) == "charcoal" and str(guest_cos.get("skin", "")) == "mint":
+			repl_ok = 1
+		else:
+			failed += 1
+			push_error("wardrobe selftest: snapshot must carry distinct cos per peer")
+		net.free()
+	else:
+		failed += 1
+		push_error("wardrobe selftest: 2-peer room setup failed")
+	if repl_ok == 1:
+		print("COSMETIC_REPL_OK=1")
+	else:
+		push_error("COSMETIC_REPL_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)

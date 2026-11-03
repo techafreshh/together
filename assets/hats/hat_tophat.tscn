@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tophat"]
+albedo_color = Color(0.133333, 0.2, 0.231373, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_tophat"]
+material = SubResource("StandardMaterial3D_tophat")
+top_radius = 0.22
+bottom_radius = 0.22
+height = 0.45
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_tophat_brim"]
+material = SubResource("StandardMaterial3D_tophat")
+top_radius = 0.34
+bottom_radius = 0.34
+height = 0.05
+
+[node name="HatTophat" type="Node3D"]
+
+[node name="Crown" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.25, 0)
+mesh = SubResource("CylinderMesh_tophat")
+
+[node name="Brim" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.02, 0)
+mesh = SubResource("CylinderMesh_tophat_brim")

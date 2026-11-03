@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_beanie"]
+albedo_color = Color(0.937255, 0.278431, 0.435294, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_beanie"]
+material = SubResource("StandardMaterial3D_beanie")
+radius = 0.28
+height = 0.35
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_beanie_brim"]
+material = SubResource("StandardMaterial3D_beanie")
+top_radius = 0.29
+bottom_radius = 0.29
+height = 0.12
+
+[node name="HatBeanie" type="Node3D"]
+
+[node name="Dome" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.15, 0)
+mesh = SubResource("SphereMesh_beanie")
+
+[node name="Brim" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.03, 0)
+mesh = SubResource("CylinderMesh_beanie_brim")
