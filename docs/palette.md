@@ -43,3 +43,20 @@ All Kenney CC0 art is recolored to these hues before it ships.
   shading detail survives while the hue matches.
 - Player colors identify P1–P4 at a glance; never reuse them for stage
   geometry that must read as neutral.
+
+## Recolor log (issue #20)
+
+Six hand-built materials drifted off-palette and were snapped to exact
+palette floats; everything else already matched. Mapping also lives in
+`assets/recolor.json` so a file scan under `assets/` proves the palette
+references.
+
+| Scene / prop                        | Material                 | Hex       | Use             |
+|-------------------------------------|--------------------------|-----------|-----------------|
+| `actors/player/player.tscn`         | `StandardMaterial3D_player` | `#EF476F` | P1 Coral avatar |
+| `actors/props/killplane.tscn`       | `StandardMaterial3D_kill`   | `#D95D39` | Terracotta hazard (alpha stays 0.35) |
+| `stages/common/stage_base.tscn`     | `StandardMaterial3D_ground` | `#22333B` | Deep Slate floor |
+| `stages/test/controller_test.tscn`  | `StandardMaterial3D_ground` | `#22333B` | Deep Slate floor |
+| `stages/test/controller_test.tscn`  | `StandardMaterial3D_step`   | `#E3B76B` | Sandstone steps |
+| `stages/test/flop_test.tscn`        | `StandardMaterial3D_ground` | `#22333B` | Deep Slate floor |
+| `stages/test/grab_test.tscn`        | `StandardMaterial3D_ground` | `#22333B` | Deep Slate floor |

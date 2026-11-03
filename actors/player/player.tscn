@@ -8,7 +8,7 @@ radius = 0.4
 height = 1.7
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_player"]
-albedo_color = Color(0.95, 0.45, 0.25, 1)
+albedo_color = Color(0.937255, 0.278431, 0.435294, 1)
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_player"]
 material = SubResource("StandardMaterial3D_player")
