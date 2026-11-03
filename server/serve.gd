@@ -68,6 +68,9 @@ var _port: int = 8080
 var _data_dir: String = "user://players"
 ## Effective concurrent-room cap (`--max-rooms`, else Config.MAX_ROOMS).
 var _max_rooms: int = 64
+## TLS mode (`--tls-mode`, else `TOGETHER_TLS_MODE`, else "off"). Recorded
+## and passed through only; termination stays operator work (Caddy/Cloudflare).
+var _tls_mode: String = "off"
 ## Last accepted /ws join per client IP (msec); joins inside the
 ## NetServer cooldown window get 429 instead of a 101 upgrade.
 var _ws_join_msec_by_ip: Dictionary = {}
@@ -132,6 +135,9 @@ func _ready() -> void:
 	if cli.has("--selftest") and cli.has("wardrobe"):
 		_run_wardrobe_selftest()
 		return
+	if cli.has("--selftest") and cli.has("config"):
+		_run_config_selftest()
+		return
 	var export_idx := cli.find("--export-check")
 	if export_idx >= 0 and export_idx + 1 < cli.size() and cli[export_idx + 1] == "web":
 		_run_export_check()
@@ -153,6 +159,7 @@ func _ready() -> void:
 	_port = int(parsed.get("port", ConfigScript.DEFAULT_PORT))
 	_data_dir = str(parsed.get("data_dir", ConfigScript.DEFAULT_DATA_DIR))
 	_max_rooms = int(parsed.get("max_rooms", ConfigScript.MAX_ROOMS))
+	_tls_mode = str(parsed.get("tls_mode", ConfigScript.DEFAULT_TLS_MODE))
 	PersistenceScript.ensure_dir(_data_dir)
 	_server = TCPServer.new()
 	var err := _server.listen(_port, "*")
@@ -160,7 +167,7 @@ func _ready() -> void:
 		push_error("together: failed to listen on port %d (error %d)" % [_port, err])
 		get_tree().quit(1)
 		return
-	print("together: serving on port %d (health GET /, socket /ws) data_dir=%s" % [_port, _data_dir])
+	print("together: serving on port %d (health GET /, socket /ws) data_dir=%s tls_mode=%s" % [_port, _data_dir, _tls_mode])
 	var net_port := int(parsed.get("net_port", 0))
 	if net_port <= 0:
 		net_port = _port + 1
@@ -341,6 +348,74 @@ static func _build_health_body() -> String:
 ## --- Web export surface (issue #21, parse-level, no templates) ---
 ## Socket-free static checks shared by the headless `--export-check web`
 ## branch and the tests/test_export_logic.gd unit runner.
+
+## Server config surface (issue #23, socket-free). Parses the same args via
+## ConfigScript.parse_serve_args and reports which of port / data_dir /
+## max_rooms matched the effective value: {port=0/1, data_dir=0/1,
+## max_rooms=0/1}. Expected values are scraped from the same args (flag
+## space/`=` form), else the live `TOGETHER_*` env, else the compiled
+## defaults — so the headless `--selftest config` branch and the unit
+## runner share one comparison with no sockets.
+static func check_config(args: PackedStringArray) -> Dictionary:
+	var parsed: Dictionary = ConfigScript.parse_serve_args(args)
+	var want_port := ConfigScript.DEFAULT_PORT
+	var want_dir := ConfigScript.DEFAULT_DATA_DIR
+	var want_max := ConfigScript.MAX_ROOMS
+	var i := 0
+	while i < args.size():
+		var a := args[i].strip_edges()
+		if a == "--port" and i + 1 < args.size():
+			var n := ConfigScript._parse_port(args[i + 1])
+			if n > 0:
+				want_port = n
+		elif a.begins_with("--port="):
+			var n2 := ConfigScript._parse_port(a.get_slice("=", 1))
+			if n2 > 0:
+				want_port = n2
+		elif a == "--data-dir" and i + 1 < args.size():
+			var d := args[i + 1].strip_edges()
+			if d != "":
+				want_dir = d
+		elif a.begins_with("--data-dir="):
+			var d2 := a.get_slice("=", 1).strip_edges()
+			if d2 != "":
+				want_dir = d2
+		elif a == "--max-rooms" and i + 1 < args.size():
+			var r := ConfigScript._parse_max_rooms(args[i + 1])
+			if r > 0:
+				want_max = r
+		elif a.begins_with("--max-rooms="):
+			var r2 := ConfigScript._parse_max_rooms(a.get_slice("=", 1))
+			if r2 > 0:
+				want_max = r2
+		i += 1
+	if not _has_cli_flag(args, "--port") and OS.has_environment("TOGETHER_PORT"):
+		var ep := ConfigScript._parse_port(OS.get_environment("TOGETHER_PORT"))
+		if ep > 0:
+			want_port = ep
+	if not _has_cli_flag(args, "--data-dir") and OS.has_environment("TOGETHER_DATA_DIR"):
+		var ed := OS.get_environment("TOGETHER_DATA_DIR").strip_edges()
+		if ed != "":
+			want_dir = ed
+	if not _has_cli_flag(args, "--max-rooms") and OS.has_environment("TOGETHER_MAX_ROOMS"):
+		var er := ConfigScript._parse_max_rooms(OS.get_environment("TOGETHER_MAX_ROOMS"))
+		if er > 0:
+			want_max = er
+	return {
+		"port": 1 if int(parsed.get("port", -1)) == want_port else 0,
+		"data_dir": 1 if str(parsed.get("data_dir", "")) == want_dir else 0,
+		"max_rooms": 1 if int(parsed.get("max_rooms", -1)) == want_max else 0,
+	}
+
+
+## True when args carry `name` as a bare flag or a `name=` inline form.
+static func _has_cli_flag(args: PackedStringArray, name: String) -> bool:
+	for raw: String in args:
+		var a := raw.strip_edges()
+		if a == name or a.begins_with(name + "="):
+			return true
+	return false
+
 
 ## Scans cfg_path via ConfigFile for a preset.N section whose name
 ## contains "Web" with platform == "Web". Returns {preset=0/1}.
@@ -735,6 +810,26 @@ func _run_ui_selftest() -> void:
 	else:
 		push_error("UI_FAIL failed=%d menu=%d lobby=%d picker=%d hud=%d results=%d" % [failed, menu, lobby, picker, hud, results])
 	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline config self-test (issue #23). The acceptance probe runs
+## `godot --headless --path . -- --selftest config --port <port>
+## --data-dir <tmp> --max-rooms <n>`, which boots the main scene, so the
+## main-scene root owns this branch: run the socket-free check_config
+## static on the live CLI args and print the CONFIG_OK line shared with
+## the probe. Quits 1 on any mismatch; touches no request/route/health
+## paths and never binds a port.
+func _run_config_selftest() -> void:
+	var cli: PackedStringArray = OS.get_cmdline_user_args()
+	var r := check_config(cli)
+	var port_ok := int(r.get("port", 0))
+	var dir_ok := int(r.get("data_dir", 0))
+	var max_ok := int(r.get("max_rooms", 0))
+	if port_ok == 1 and dir_ok == 1 and max_ok == 1:
+		print("CONFIG_OK port=%d data_dir=%d max_rooms=%d" % [port_ok, dir_ok, max_ok])
+	else:
+		push_error("CONFIG_FAIL port=%d data_dir=%d max_rooms=%d" % [port_ok, dir_ok, max_ok])
+	get_tree().quit(1 if port_ok == 0 or dir_ok == 0 or max_ok == 0 else 0)
 
 
 ## Offline persist self-test (issue #17). The acceptance probe runs

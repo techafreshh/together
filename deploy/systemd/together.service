@@ -1,0 +1,20 @@
+[Unit]
+Description=together headless game server (issue #23)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=together
+WorkingDirectory=/srv/together/source
+# Server tuning: flags beat these env values, compiled defaults lose to them.
+Environment=TOGETHER_PORT=8080
+Environment=TOGETHER_DATA_DIR=/srv/together/data
+Environment=TOGETHER_MAX_ROOMS=64
+Environment=TOGETHER_TLS_MODE=off
+ExecStart=/usr/local/bin/godot --headless --path /srv/together/source -- --serve
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
