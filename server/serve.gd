@@ -23,6 +23,11 @@ const ControllerScript := preload("res://actors/player/controller.gd")
 const RagdollScript := preload("res://actors/player/ragdoll.gd")
 const TuningScript := preload("res://actors/player/tuning.gd")
 const StageBaseScript := preload("res://stages/common/stage_base.gd")
+const ButtonScript := preload("res://actors/props/button.gd")
+const SequenceScript := preload("res://actors/props/sequence_buttons.gd")
+const BoostScript := preload("res://actors/props/boost.gd")
+const SeesawScript := preload("res://actors/props/seesaw.gd")
+const LeverScript := preload("res://actors/props/lever.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -47,6 +52,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("scaffold"):
 		_run_scaffold_selftest()
+		return
+	if cli.has("--selftest") and cli.has("props"):
+		_run_props_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -241,6 +249,29 @@ func _run_scaffold_selftest() -> void:
 		print("GOAL_ALL_OK count=%d" % StageBaseScript.scaffold_goal_count())
 	else:
 		push_error("SCAFFOLD_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline prop-kit self-test (issue #6). The acceptance probe runs
+## `godot --headless --path . -- --selftest props`, which boots the main
+## scene, so the main-scene root owns this branch: aggregate the five prop
+## self-tests and print the PROP_OK line shared with the kit demo stage.
+func _run_props_selftest() -> void:
+	var button_result: Array = ButtonScript.run_selftest()
+	var sequence_result: Array = SequenceScript.run_selftest()
+	var boost_result: Array = BoostScript.run_selftest()
+	var seesaw_result: Array = SeesawScript.run_selftest()
+	var lever_result: Array = LeverScript.run_selftest()
+	var button_ok := 1 if int(button_result[1]) == 0 else 0
+	var sequence_ok := 1 if int(sequence_result[1]) == 0 else 0
+	var boost_ok := 1 if int(boost_result[1]) == 0 else 0
+	var seesaw_ok := 1 if int(seesaw_result[1]) == 0 else 0
+	var lever_ok := 1 if int(lever_result[1]) == 0 else 0
+	var failed := int(button_result[1]) + int(sequence_result[1]) + int(boost_result[1]) + int(seesaw_result[1]) + int(lever_result[1])
+	if failed == 0:
+		print("PROP_OK button=1 sequence=1 boost=1 seesaw=1 lever=1")
+	else:
+		push_error("PROP_FAIL button=%d sequence=%d boost=%d seesaw=%d lever=%d" % [button_ok, sequence_ok, boost_ok, seesaw_ok, lever_ok])
 	get_tree().quit(1 if failed > 0 else 0)
 
 
