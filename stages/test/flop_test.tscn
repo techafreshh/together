@@ -1,0 +1,60 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://stages/test/flop_test.gd" id="1_test"]
+[ext_resource type="PackedScene" path="res://actors/player/player.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://actors/props/killplane.tscn" id="3_killplane"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.25, 0.3, 0.38, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
+size = Vector3(24, 1, 24)
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("StandardMaterial3D_ground")
+size = Vector3(24, 1, 24)
+
+[sub_resource type="Environment" id="Environment_test"]
+background_mode = 1
+background_color = Color(0.1, 0.12, 0.18, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.7, 0.75, 0.85, 1)
+ambient_light_energy = 0.8
+tonemap_mode = 2
+
+[node name="TestStage" type="Node3D"]
+script = ExtResource("1_test")
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("BoxShape3D_floor")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("BoxMesh_floor")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.785398, -0.523599, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_test")
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector3(0, 2, 0)
+camera_yaw_path = NodePath("../FollowPivot")
+
+[node name="KillPlane" parent="." instance=ExtResource("3_killplane")]
+position = Vector3(0, -10, 0)
+
+[node name="FollowPivot" type="Node3D" parent="."]
+position = Vector3(0, 1.6, 0)
+rotation = Vector3(-0.314159, 0, 0)
+
+[node name="SpringArm3D" type="SpringArm3D" parent="FollowPivot"]
+spring_length = 4.5
+
+[node name="Camera3D" type="Camera3D" parent="FollowPivot/SpringArm3D"]
+current = true
+fov = 70.0

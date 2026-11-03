@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://actors/player/controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://actors/player/ragdoll.gd" id="2_ragdoll"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.4
@@ -22,3 +23,6 @@ shape = SubResource("CapsuleShape3D_player")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = SubResource("CapsuleMesh_player")
+
+[node name="Ragdoll" type="Node" parent="."]
+script = ExtResource("2_ragdoll")
