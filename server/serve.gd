@@ -75,6 +75,9 @@ func _ready() -> void:
 	if cli.has("--selftest") and cli.has("flow"):
 		_run_flow_selftest()
 		return
+	if cli.has("--selftest") and cli.has("resilience"):
+		_run_resilience_selftest()
+		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
 		push_error("Usage: godot --headless --path . -- --serve --port <port>")
@@ -437,6 +440,116 @@ func _run_flow_selftest() -> void:
 		print("HOST_GUARD_OK=1")
 	else:
 		push_error("FLOW_FAIL failed=%d boot=%d all=%d res=%d guard=%d" % [failed, boot_ok, all_ok, res_ok, guard_ok])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline resilience self-test (issue #12). Drives 3 peers through the
+## mid-stage leave (room survives, stage continues), the mid-stage join
+## (lobby_wait until the next stage_boot), and the below-2 restart (fresh
+## stage_boot for the survivors). Prints RESILIENCE_OK on green and quits.
+func _run_resilience_selftest() -> void:
+	var failed := 0
+	var continued := 0
+	var restarted_below2 := 0
+	var latejoin_lobby := 0
+	var rooms = RoomManagerScript.new()
+	var flow = FlowManagerScript.new()
+	var created: Dictionary = rooms.create_room("P1", "hash-p1")
+	var code := str(created.get("code", ""))
+	var p1 := int(created.get("player_id", 0))
+	var j2: Dictionary = rooms.join_room(code, "P2", "hash-p2")
+	var j3: Dictionary = rooms.join_room(code, "P3", "hash-p3")
+	var p2 := int(j2.get("player_id", 0))
+	var p3 := int(j3.get("player_id", 0))
+	if not (bool(created.get("ok", false)) and bool(j2.get("ok", false)) and bool(j3.get("ok", false)) and code != ""):
+		failed += 1
+		push_error("resilience selftest: 3-peer room setup failed")
+	flow.bind_room(code, [p1, p2, p3], p1)
+	var picked: Dictionary = flow.select_stage(code, p1, p1, "w1s1")
+	if not bool(picked.get("ok", false)):
+		failed += 1
+		push_error("resilience selftest: host select w1s1 rejected")
+	var started: Dictionary = flow.start_stage(code)
+	var boot: Dictionary = started.get("stage_boot", {})
+	if not (bool(started.get("ok", false)) and str(boot.get("stage_id", "")) == "w1s1"):
+		failed += 1
+		push_error("resilience selftest: start_stage boot invalid")
+	if not bool(rooms.set_stage_active(code, true, boot).get("ok", false)):
+		failed += 1
+		push_error("resilience selftest: set_stage_active(true) rejected")
+	var left3: Dictionary = rooms.leave_room(code, p3)
+	var rem3: Dictionary = flow.remove_player(code, p3)
+	if bool(left3.get("ok", false)) and not bool(left3.get("erased", false)) and int(left3.get("players_remaining", 0)) == 2:
+		pass
+	else:
+		failed += 1
+		push_error("resilience selftest: P3 leave must keep room alive with 2")
+	if bool(rem3.get("ok", false)) and bool(rem3.get("continued", false)) and not bool(rem3.get("restarted", false)) and int(rem3.get("players", 0)) == 2:
+		continued = 1
+	else:
+		failed += 1
+		push_error("resilience selftest: P3 leave must continue stage with 2")
+	var j4: Dictionary = rooms.join_room(code, "P4", "hash-p4")
+	if not bool(j4.get("ok", false)) and str(j4.get("error", "")) == "lobby_wait":
+		latejoin_lobby = 1
+	else:
+		failed += 1
+		push_error("resilience selftest: mid-stage join must fail lobby_wait")
+	var st_mid: Dictionary = rooms.room_state(code)
+	var mid_players: Array = (st_mid.get("room_state", {}) as Dictionary).get("players", [])
+	if mid_players.size() != 2:
+		failed += 1
+		push_error("resilience selftest: gated-out joiner must stay out of room_state")
+	var left2: Dictionary = rooms.leave_room(code, p2)
+	var rem2: Dictionary = flow.remove_player(code, p2)
+	var fresh_boot: Dictionary = rem2.get("stage_boot", {})
+	if bool(left2.get("ok", false)) and not bool(left2.get("erased", false)) and int(left2.get("players_remaining", 0)) == 1:
+		pass
+	else:
+		failed += 1
+		push_error("resilience selftest: P2 leave must keep room alive with 1")
+	if bool(rem2.get("ok", false)) and bool(rem2.get("restarted", false)) and fresh_boot.size() > 0:
+		restarted_below2 = 1
+		rooms.set_stage_active(code, true, fresh_boot, "stage_restarted")
+	else:
+		failed += 1
+		push_error("resilience selftest: drop below 2 must restart the stage")
+	rooms.set_stage_active(code, false)
+	var j4b: Dictionary = rooms.join_room(code, "P4", "hash-p4")
+	var p4 := int(j4b.get("player_id", 0))
+	if not bool(j4b.get("ok", false)):
+		failed += 1
+		push_error("resilience selftest: post-stage join must succeed")
+	else:
+		var st2: Dictionary = rooms.room_state(code)
+		var ids2: Array = []
+		for p in ((st2.get("room_state", {}) as Dictionary).get("players", []) as Array):
+			ids2.append(int((p as Dictionary).get("id", 0)))
+		flow.bind_room(code, ids2, int((st2.get("room_state", {}) as Dictionary).get("host_id", p1)))
+		flow.select_stage(code, p1, p1, "w1s1")
+		var started2: Dictionary = flow.start_stage(code)
+		var boot2: Dictionary = started2.get("stage_boot", {})
+		var spawns2: Dictionary = boot2.get("spawn_map", {})
+		if bool(started2.get("ok", false)) and spawns2.has(p4):
+			rooms.set_stage_active(code, true, boot2)
+		else:
+			failed += 1
+			push_error("resilience selftest: next stage_boot spawn_map must cover P4")
+	var events: Array = rooms.drain_events()
+	var saw_state := false
+	var saw_event := false
+	for e in events:
+		if str((e as Dictionary).get("msg", "")) == "room_state":
+			saw_state = true
+		if str((e as Dictionary).get("msg", "")) == "game_event":
+			saw_event = true
+	if not (saw_state and saw_event):
+		failed += 1
+		push_error("resilience selftest: outbox must hold room_state and game_event")
+	if failed == 0 and continued == 1 and restarted_below2 == 1 and latejoin_lobby == 1:
+		print("RESILIENCE_OK continued=1 restarted_below2=1 latejoin_lobby=1")
+	else:
+		push_error("RESILIENCE_FAIL failed=%d continued=%d restarted=%d lobby=%d" % [failed, continued, restarted_below2, latejoin_lobby])
 	get_tree().quit(1 if failed > 0 else 0)
 
 
