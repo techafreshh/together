@@ -1,0 +1,55 @@
+; Net. autoload placeholder (Net.connect_game / Net.push_snapshots)
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/results.gd" id="1_results"]
+
+[node name="Results" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_results")
+
+[node name="CoinsLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 96.0
+grow_horizontal = 2
+horizontal_alignment = 1
+
+[node name="ResultsBests" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 104.0
+offset_bottom = 200.0
+grow_horizontal = 2
+horizontal_alignment = 1
+
+[node name="VoteBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 208.0
+offset_bottom = 280.0
+grow_horizontal = 2
+
+[node name="VoteYes" type="Button" parent="VoteBox"]
+layout_mode = 2
+text = "Next stage"
+
+[node name="VoteNo" type="Button" parent="VoteBox"]
+layout_mode = 2
+text = "Replay"
+
+[node name="NextButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 288.0
+offset_bottom = 320.0
+grow_horizontal = 2
+text = "Continue"
