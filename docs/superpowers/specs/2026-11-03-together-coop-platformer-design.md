@@ -68,7 +68,7 @@ in this design serves that promise.
   is HTTPS, so the socket must be `wss://` (TLS).
 - First web load is a **~50–80 MB one-time download** (cached after).
 - Web builds run **slower than native** (~2–4×); budgets assume a modest
-  5-year-olddesktop, not a potato.
+  5-year-old desktop, not a potato.
 - Cloudflare Pages static hosting **per-file size limit (~25 MiB)** may
   reject a Godot wasm file; this must be verified at build time.
 - Owner's VPS: a single Linux box, no special hardware; server runs as a
