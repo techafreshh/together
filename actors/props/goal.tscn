@@ -1,0 +1,24 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://actors/props/goal.gd" id="1_goal"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_goal"]
+size = Vector3(4, 3, 4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_goal"]
+albedo_color = Color(1, 0.717647, 0.011765, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_goal"]
+material = SubResource("StandardMaterial3D_goal")
+size = Vector3(4, 3, 4)
+
+[node name="Goal" type="Area3D"]
+script = ExtResource("1_goal")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.5, 0)
+shape = SubResource("BoxShape3D_goal")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.5, 0)
+mesh = SubResource("BoxMesh_goal")
