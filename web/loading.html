@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<!-- Together web build boot indicator (issue #21).
+  First-load budget: ~80 MB over the wire; cached loads target < 5 s.
+  The hashed bundle assets (.js/.wasm/.pck) carry immutable long-cache
+  headers (see web/_headers), so repeat visits only revalidate index.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Together — Loading</title>
+<style>
+  body { background: #101418; color: #e8eef4; font-family: sans-serif;
+         display: flex; align-items: center; justify-content: center;
+         height: 100vh; margin: 0; }
+  .wrap { text-align: center; max-width: 28rem; }
+  .bar { height: 0.75rem; border-radius: 0.5rem; background: #2a3340;
+         margin-top: 1rem; overflow: hidden; }
+  .bar > div { height: 100%; width: 30%; border-radius: 0.5rem;
+               background: #7fd08a; animation: slide 1.2s infinite ease-in-out; }
+  @keyframes slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+  .hint { margin-top: 0.75rem; font-size: 0.85rem; color: #9fb0c3; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Loading Together&hellip;</h1>
+  <div class="bar" role="progressbar" aria-label="loading"><div></div></div>
+  <p class="hint">First visit downloads up to ~80&nbsp;MB; cached loads finish in under 5&nbsp;s.</p>
+</div>
+</body>
+</html>

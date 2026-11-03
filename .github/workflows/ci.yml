@@ -50,8 +50,16 @@ jobs:
           godot --headless --path . --script res://tests/test_persist_logic.gd
           godot --headless --path . --script res://tests/test_wardrobe_logic.gd
           godot --headless --path . --script res://tests/test_audiovisual_logic.gd
+          godot --headless --path . --script res://tests/test_export_logic.gd
           godot --headless --path . -- --selftest audiovisual
           godot --headless --path . -- --selftest perf
+
+      - name: Web export check (parse-level, no templates)
+        timeout-minutes: 5
+        run: |
+          godot --headless --path . -- --export-check web > /tmp/export_web.log 2>&1
+          cat /tmp/export_web.log
+          grep -q 'EXPORT_WEB_OK preset=1 headers=1' /tmp/export_web.log
 
       - name: Skeleton health probe (GET / expects 200)
         timeout-minutes: 5
