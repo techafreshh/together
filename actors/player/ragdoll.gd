@@ -34,10 +34,15 @@ func _on_flop_tween_done() -> void:
 	flop_finished.emit()
 
 
-## Flop-SFX hook: plays a child AudioStreamPlayer3D named FlopSfx only when
-## present; otherwise prints a debug line so headless runs stay deterministic.
-## Real audio assets arrive in a later lap.
+## Flop-SFX hook: prefers the central Sfx bus when present, then plays a
+## child AudioStreamPlayer3D named FlopSfx when present; otherwise prints a
+## debug line so headless runs stay deterministic.
 func play_flop_sfx() -> void:
+	if is_inside_tree():
+		var bus := get_node_or_null("/root/Sfx")
+		if bus != null and bus.has_method("play"):
+			bus.call("play", "flop")
+			return
 	if has_node("FlopSfx"):
 		var sfx := get_node("FlopSfx")
 		if sfx != null and sfx.has_method("play"):
