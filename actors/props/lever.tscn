@@ -1,0 +1,52 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://actors/props/lever.gd" id="1_lever"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_lever_stand"]
+size = Vector3(0.4, 1, 0.4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lever_stand"]
+albedo_color = Color(0.133333, 0.2, 0.231373, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lever_stand"]
+material = SubResource("StandardMaterial3D_lever_stand")
+size = Vector3(0.4, 1, 0.4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lever_handle"]
+albedo_color = Color(0.85098, 0.364706, 0.223529, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_lever_handle"]
+material = SubResource("StandardMaterial3D_lever_handle")
+radius = 0.15
+height = 0.9
+
+[node name="Lever" type="Node3D"]
+script = ExtResource("1_lever")
+
+[node name="StandA" type="StaticBody3D" parent="."]
+position = Vector3(-1, 0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StandA"]
+shape = SubResource("BoxShape3D_lever_stand")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StandA"]
+mesh = SubResource("BoxMesh_lever_stand")
+
+[node name="HandleA" type="MeshInstance3D" parent="."]
+position = Vector3(-1, 1.4, 0)
+rotation = Vector3(0, 0, 0.3)
+mesh = SubResource("CapsuleMesh_lever_handle")
+
+[node name="StandB" type="StaticBody3D" parent="."]
+position = Vector3(1, 0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StandB"]
+shape = SubResource("BoxShape3D_lever_stand")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StandB"]
+mesh = SubResource("BoxMesh_lever_stand")
+
+[node name="HandleB" type="MeshInstance3D" parent="."]
+position = Vector3(1, 1.4, 0)
+rotation = Vector3(0, 0, -0.3)
+mesh = SubResource("CapsuleMesh_lever_handle")

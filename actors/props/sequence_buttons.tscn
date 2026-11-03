@@ -1,0 +1,57 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://actors/props/sequence_buttons.gd" id="1_seq"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_seq_pad"]
+size = Vector3(1, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_seq0"]
+albedo_color = Color(1, 0.717647, 0.011765, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_seq0"]
+material = SubResource("StandardMaterial3D_seq0")
+size = Vector3(1, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_seq1"]
+albedo_color = Color(0.466667, 0.780392, 0.85098, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_seq1"]
+material = SubResource("StandardMaterial3D_seq1")
+size = Vector3(1, 0.3, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_seq2"]
+albedo_color = Color(0.372549, 0.717647, 0.352941, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_seq2"]
+material = SubResource("StandardMaterial3D_seq2")
+size = Vector3(1, 0.3, 1)
+
+[node name="SequenceButtons" type="Node3D"]
+script = ExtResource("1_seq")
+
+[node name="Pad0" type="StaticBody3D" parent="."]
+position = Vector3(-1.4, 0.15, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Pad0"]
+shape = SubResource("BoxShape3D_seq_pad")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Pad0"]
+mesh = SubResource("BoxMesh_seq0")
+
+[node name="Pad1" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.15, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Pad1"]
+shape = SubResource("BoxShape3D_seq_pad")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Pad1"]
+mesh = SubResource("BoxMesh_seq1")
+
+[node name="Pad2" type="StaticBody3D" parent="."]
+position = Vector3(1.4, 0.15, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Pad2"]
+shape = SubResource("BoxShape3D_seq_pad")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Pad2"]
+mesh = SubResource("BoxMesh_seq2")
