@@ -29,6 +29,7 @@ const BoostScript := preload("res://actors/props/boost.gd")
 const SeesawScript := preload("res://actors/props/seesaw.gd")
 const LeverScript := preload("res://actors/props/lever.gd")
 const SfxScript := preload("res://autoload/Sfx.gd")
+const NetServerScript := preload("res://server/net_server.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -41,6 +42,9 @@ const MAX_HEADER_BYTES := 16384
 var _server: TCPServer
 var _pending: Array = []
 var _port: int = 8080
+## Last accepted /ws join per client IP (msec); joins inside the
+## NetServer cooldown window get 429 instead of a 101 upgrade.
+var _ws_join_msec_by_ip: Dictionary = {}
 
 
 func _ready() -> void:
@@ -53,6 +57,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("scaffold"):
 		_run_scaffold_selftest()
+		return
+	if cli.has("--selftest") and cli.has("net"):
+		_run_net_selftest()
 		return
 	if cli.has("--selftest") and cli.has("props"):
 		_run_props_selftest()
@@ -73,6 +80,17 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	print("together: serving on port %d (health GET /, socket /ws)" % _port)
+	var net_port := int(parsed.get("net_port", 0))
+	if net_port <= 0:
+		net_port = _port + 1
+	var net_server: Node = NetServerScript.new()
+	net_server.name = "NetServer"
+	add_child(net_server)
+	var net_err: int = net_server.call("start_game_socket", net_port)
+	if net_err != OK:
+		push_warning("together: game socket on port %d unavailable (error %d); health only" % [net_port, net_err])
+	else:
+		print("together: game socket on port %d (input_state/snapshots)" % net_port)
 
 
 func _process(_delta: float) -> void:
@@ -123,6 +141,15 @@ func _handle_request(conn: StreamPeerTCP, header_bytes: PackedByteArray) -> void
 		_respond(conn, 200, _build_health_body())
 		return
 	if status == 101:
+		var host := "unknown"
+		if conn != null:
+			host = str(conn.get_connected_host())
+		var now := int(Time.get_ticks_msec())
+		var last := int(_ws_join_msec_by_ip.get(host, -1))
+		if not NetServerScript.is_join_allowed(last, now):
+			_respond(conn, 429, JSON.stringify({"ok": false, "error": "rate_limited"}))
+			return
+		_ws_join_msec_by_ip[host] = now
 		_handshake_ws(conn, str(headers.get("sec-websocket-key", "")).strip_edges())
 		return
 	if status == 400:
@@ -150,6 +177,8 @@ func _respond(conn: StreamPeerTCP, status: int, body: String) -> void:
 		reason = "OK"
 	elif status == 400:
 		reason = "Bad Request"
+	elif status == 429:
+		reason = "Too Many Requests"
 	var body_bytes := body.to_utf8_buffer()
 	var head := "HTTP/1.1 %d %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n" % [status, reason, body_bytes.size()]
 	if conn.get_status() != StreamPeerTCP.STATUS_CONNECTED:
@@ -239,6 +268,21 @@ func _run_controller_selftest() -> void:
 		print("CONTROLLER_OK jump_arc_ms=%d coyote_ms=%d" % [TuningScript.jump_arc_ms(), TuningScript.coyote_ms])
 	else:
 		push_error("CONTROLLER_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline net self-test (issue #9). The acceptance probe runs
+## `godot --headless --path . -- --selftest net`, which boots the main
+## scene, so the main-scene root owns this branch: drive the two virtual
+## peers through the fixed tick budget with the shared NetServer checks
+## and quit. No sockets, no awaits.
+func _run_net_selftest() -> void:
+	var result: Array = NetServerScript.run_selftest()
+	var failed := int(result[1])
+	if failed == 0:
+		print("NET_OK peers=%d ticks=%d" % [NetServerScript.SELFTEST_PEERS, NetServerScript.SELFTEST_TICKS])
+	else:
+		push_error("NET_FAIL failed=%d" % failed)
 	get_tree().quit(1 if failed > 0 else 0)
 
 
