@@ -132,6 +132,9 @@ func _ready() -> void:
 	if cli.has("--selftest") and cli.has("world14"):
 		_run_world14_selftest()
 		return
+	if cli.has("--selftest") and cli.has("full_world"):
+		_run_full_world_selftest()
+		return
 	if cli.has("--selftest") and cli.has("wardrobe"):
 		_run_wardrobe_selftest()
 		return
@@ -1287,6 +1290,180 @@ func _run_world14_selftest() -> void:
 		print("WORLD_OK players2=1 players3=1 players4=1")
 	else:
 		push_error("WORLD_FAIL failed=%d players2=%d players3=%d players4=%d lever_solo=%d" % [failed, players2, players3, players4, lever_solo])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Full world-1 integration run (issue #24). The acceptance probe runs
+## `godot --headless --path . -- --selftest full_world` with 2 bots: one
+## room, both bots bound, then w1s1..w1s8 through the real RoomManager +
+## FlowManager + the 8 real stage scenes + PersistenceScript +
+## WardrobeScript with no sockets and no awaits. Each stage does host
+## select_stage -> start_stage -> instantiate the manifest scene path ->
+## notify_goal_entered for 2 dummies -> assert goal_count/is_goal_complete
+## -> FlowManager.notify_goal for both ids -> assert goal_all ->
+## build_results with first-clear coin accumulation; then a funded profile
+## buys + equips hat_cone, proves attach_hat visibility on player.tscn,
+## and round-trips through save_player/load_player. Prints exactly
+## FULL_WORLD_OK stages=8 coins=1 wardrobe=1 persist=1 on success.
+## Quits 1 on any failure; touches no request/route/health paths.
+func _run_full_world_selftest() -> void:
+	var failed := 0
+	var stages_done := 0
+	var run_total := 0
+	var wardrobe := 0
+	var persist := 0
+	var want := FlowManagerScript.STAGE_IDS
+	var rooms = RoomManagerScript.new()
+	var flow = FlowManagerScript.new()
+	var created: Dictionary = rooms.create_room("Host", "hash-host")
+	var code := str(created.get("code", ""))
+	var host_id := int(created.get("player_id", 0))
+	var joined: Dictionary = rooms.join_room(code, "Guest", "hash-guest")
+	var guest_id := int(joined.get("player_id", 0))
+	if not (bool(created.get("ok", false)) and bool(joined.get("ok", false)) and code != "" and host_id > 0 and guest_id > 0):
+		failed += 1
+		push_error("full_world selftest: room create+join for 2 bots failed")
+		push_error("FULL_WORLD_FAIL failed=%d stages=%d" % [failed, stages_done])
+		get_tree().quit(1)
+		return
+	flow.bind_room(code, [host_id, guest_id], host_id)
+	var manifest := ConfigFile.new()
+	if manifest.load("res://stages/world1/manifest.cfg") != OK:
+		failed += 1
+		push_error("full_world selftest: manifest.cfg failed to load")
+	else:
+		var listed: Array = manifest.get_value("world1", "stages", [])
+		if listed.size() != 8:
+			failed += 1
+			push_error("full_world selftest: manifest [world1] stages must list 8")
+	for wid in want:
+		var stage_id := str(wid)
+		var picked: Dictionary = flow.select_stage(code, host_id, host_id, stage_id)
+		if not bool(picked.get("ok", false)):
+			failed += 1
+			push_error("full_world selftest: host select_stage %s rejected" % stage_id)
+			continue
+		var started: Dictionary = flow.start_stage(code)
+		if not bool(started.get("ok", false)):
+			failed += 1
+			push_error("full_world selftest: start_stage %s rejected" % stage_id)
+			continue
+		var scene_path := str(manifest.get_value(stage_id, "scene", ""))
+		if scene_path == "":
+			failed += 1
+			push_error("full_world selftest: manifest [%s] missing scene" % stage_id)
+			continue
+		var packed: PackedScene = load(scene_path) as PackedScene
+		if packed == null:
+			failed += 1
+			push_error("full_world selftest: %s failed to load" % stage_id)
+			continue
+		var stage: Node = packed.instantiate() as Node
+		if stage == null:
+			failed += 1
+			push_error("full_world selftest: %s failed to instantiate" % stage_id)
+			continue
+		var all_hits := [0]
+		stage.connect("goal_all_reached", func(): all_hits[0] += 1)
+		var dummies: Array = []
+		for i in range(2):
+			var d := Node.new()
+			dummies.append(d)
+			stage.call("notify_goal_entered", d)
+		if int(stage.call("goal_count")) != 2 or not bool(stage.call("is_goal_complete")) or all_hits[0] < 1:
+			failed += 1
+			push_error("full_world selftest: %s must complete with 2 in the goal" % stage_id)
+		for d in dummies:
+			d.free()
+		stage.free()
+		flow.notify_goal(code, host_id)
+		flow.notify_goal(code, guest_id)
+		if not (flow.is_goal_all(code) and flow.goal_all(code)):
+			failed += 1
+			push_error("full_world selftest: %s both goals must set goal_all" % stage_id)
+			continue
+		var built: Dictionary = flow.build_results(code)
+		var results: Dictionary = built.get("results", {})
+		var awarded: Dictionary = results.get("coins_awarded", {})
+		if bool(built.get("ok", false)) and results.has("clears") and results.has("bests") and awarded.has(str(host_id)):
+			run_total += int(awarded.get(str(host_id), 0))
+			stages_done += 1
+		else:
+			failed += 1
+			push_error("full_world selftest: %s results must carry clears, bests, coins_awarded" % stage_id)
+	var coins := 0
+	if stages_done == 8 and run_total == WardrobeScript.full_run_coins():
+		coins = 1
+	else:
+		failed += 1
+		push_error("full_world selftest: 8 first clears must total %d (got %d over %d stages)" % [WardrobeScript.full_run_coins(), run_total, stages_done])
+	var profile: Dictionary = WardrobeScript.default_profile()
+	profile["coins"] = run_total
+	var cheapest_skin := "charcoal"
+	var cheapest_price := 1 << 30
+	for skin_id in WardrobeScript.SKIN_IDS:
+		var price := WardrobeScript.price_for(skin_id)
+		if price >= 0 and price < cheapest_price:
+			cheapest_price = price
+			cheapest_skin = str(skin_id)
+	var bought_hat: Dictionary = WardrobeScript.try_purchase(profile, "hat_cone")
+	var bought_skin: Dictionary = WardrobeScript.try_purchase(profile, cheapest_skin)
+	var wear_hat: Dictionary = WardrobeScript.equip(profile, "hat", "hat_cone")
+	var wear_skin: Dictionary = WardrobeScript.equip(profile, "skin", cheapest_skin)
+	if bool(bought_hat.get("ok", false)) and bool(bought_skin.get("ok", false)) and bool(wear_hat.get("ok", false)) and bool(wear_skin.get("ok", false)):
+		var probe_packed: PackedScene = load("res://actors/player/player.tscn") as PackedScene
+		if probe_packed != null:
+			var probe: Node = probe_packed.instantiate() as Node
+			if probe != null:
+				if probe.get_node_or_null("HatAnchor") != null and CosmeticsScript.attach_hat(probe, "hat_cone") and CosmeticsScript.is_hat_visible(probe):
+					wardrobe = 1
+				else:
+					failed += 1
+					push_error("full_world selftest: equipped hat_cone must be visible")
+				probe.free()
+			else:
+				failed += 1
+				push_error("full_world selftest: player failed to instantiate")
+		else:
+			failed += 1
+			push_error("full_world selftest: player.tscn failed to load")
+	else:
+		failed += 1
+		push_error("full_world selftest: funded profile must buy + equip hat_cone and %s" % cheapest_skin)
+	for wid in want:
+		PersistenceScript.record_clear(profile, str(wid), 1000)
+	var cli: PackedStringArray = OS.get_cmdline_user_args()
+	var dir := ""
+	for i in range(cli.size()):
+		var a := cli[i].strip_edges()
+		if a == "--data-dir" and i + 1 < cli.size():
+			dir = cli[i + 1].strip_edges()
+		elif a.begins_with("--data-dir="):
+			dir = a.get_slice("=", 1).strip_edges()
+	if dir == "":
+		dir = OS.get_temp_dir().path_join("together_full_world")
+	if PersistenceScript.save_player(dir, "FullWorldBot", profile):
+		var reloaded: Dictionary = PersistenceScript.load_player(dir, "FullWorldBot")
+		var stages_ok := true
+		var saved_stages: Dictionary = profile.get("stages", {})
+		var back_stages: Dictionary = reloaded.get("stages", {})
+		for wid in want:
+			var sid := str(wid)
+			if not back_stages.has(sid) or int((back_stages[sid] as Dictionary).get("clears", 0)) < 1:
+				stages_ok = false
+				break
+		if int(reloaded.get("coins", -1)) == int(profile.get("coins", -2)) and saved_stages.size() == 8 and stages_ok:
+			persist = 1
+		else:
+			failed += 1
+			push_error("full_world selftest: save/reload must preserve coins and 8 stage clears")
+	else:
+		failed += 1
+		push_error("full_world selftest: save_player failed for dir %s" % dir)
+	if failed == 0 and stages_done == 8 and coins == 1 and wardrobe == 1 and persist == 1:
+		print("FULL_WORLD_OK stages=8 coins=1 wardrobe=1 persist=1")
+	else:
+		push_error("FULL_WORLD_FAIL failed=%d stages=%d coins=%d wardrobe=%d persist=%d" % [failed, stages_done, coins, wardrobe, persist])
 	get_tree().quit(1 if failed > 0 else 0)
 
 
