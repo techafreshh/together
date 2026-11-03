@@ -36,6 +36,8 @@ const Stage03Script := preload("res://stages/world1/stage_03.gd")
 const Stage04Script := preload("res://stages/world1/stage_04.gd")
 const Stage05Script := preload("res://stages/world1/stage_05.gd")
 const Stage06Script := preload("res://stages/world1/stage_06.gd")
+const Stage07Script := preload("res://stages/world1/stage_07.gd")
+const Stage08Script := preload("res://stages/world1/stage_08.gd")
 const NetServerScript := preload("res://server/net_server.gd")
 const RoomManagerScript := preload("res://server/room_manager.gd")
 const FlowManagerScript := preload("res://server/flow_manager.gd")
@@ -96,6 +98,12 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("stages56"):
 		_run_stages56_selftest()
+		return
+	if cli.has("--selftest") and cli.has("stages78"):
+		_run_stages78_selftest()
+		return
+	if cli.has("--selftest") and cli.has("world14"):
+		_run_world14_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -588,6 +596,287 @@ func _run_resilience_selftest() -> void:
 		print("RESILIENCE_OK continued=1 restarted_below2=1 latejoin_lobby=1")
 	else:
 		push_error("RESILIENCE_FAIL failed=%d continued=%d restarted=%d lobby=%d" % [failed, continued, restarted_below2, latejoin_lobby])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline stages78 self-test (issue #16). The acceptance probe runs
+## `godot --headless --path . -- --selftest stages78`, which boots the main
+## scene, so the main-scene root owns this branch: load the world-1
+## manifest via ConfigFile, run both stage run_selftest suites, prove the
+## timed-pair predicates (stage_07 in-window pairs complete, slow and
+## unset stamps stay blocked) and the remix predicates (stage_08 opens only
+## when all five verbs hold), count the live lever/remix props via
+## count_props, and print the STAGES78_OK line shared with the probe.
+## Quits 1 on any failure; touches no request/route/health paths.
+func _run_stages78_selftest() -> void:
+	var failed := 0
+	var manifest := ConfigFile.new()
+	if manifest.load("res://stages/world1/manifest.cfg") != OK:
+		failed += 1
+		push_error("stages78 selftest: manifest.cfg failed to load")
+	else:
+		var stages: Array = manifest.get_value("world1", "stages", [])
+		var want := ["w1s1", "w1s2", "w1s3", "w1s4", "w1s5", "w1s6", "w1s7", "w1s8"]
+		for wid in want:
+			if not stages.has(wid):
+				failed += 1
+				push_error("stages78 selftest: manifest [world1] stages must list %s" % wid)
+		if not manifest.has_section("w1s7") or not manifest.has_section("w1s8"):
+			failed += 1
+			push_error("stages78 selftest: manifest must carry [w1s7] and [w1s8] sections")
+		for section in ["w1s7", "w1s8"]:
+			for key in ["scaling_2", "scaling_3", "scaling_4"]:
+				if str(manifest.get_value(section, key, "")) == "":
+					failed += 1
+					push_error("stages78 selftest: manifest [%s] missing %s" % [section, key])
+		if str(manifest.get_value("w1s7", "scene", "")) != "res://stages/world1/stage_07.tscn":
+			failed += 1
+			push_error("stages78 selftest: manifest [w1s7] scene must be stage_07.tscn")
+		if str(manifest.get_value("w1s8", "scene", "")) != "res://stages/world1/stage_08.tscn":
+			failed += 1
+			push_error("stages78 selftest: manifest [w1s8] scene must be stage_08.tscn")
+		if int(manifest.get_value("w1s7", "pair_required", 0)) != Stage07Script.PAIR_REQUIRED:
+			failed += 1
+			push_error("stages78 selftest: manifest [w1s7] pair_required must be 2")
+		if int(manifest.get_value("w1s7", "window_ms", 0)) != Stage07Script.PAIR_WINDOW_MS:
+			failed += 1
+			push_error("stages78 selftest: manifest [w1s7] window_ms must be 2000")
+		if int(manifest.get_value("w1s8", "cross_required", 0)) != Stage08Script.CROSS_REQUIRED:
+			failed += 1
+			push_error("stages78 selftest: manifest [w1s8] cross_required must be 2")
+		if int(manifest.get_value("w1s8", "carry_required", 0)) != Stage08Script.CARRY_REQUIRED:
+			failed += 1
+			push_error("stages78 selftest: manifest [w1s8] carry_required must be 2")
+	if Stage07Script.PAIR_WINDOW_MS != LeverScript.PAIR_WINDOW_MS:
+		failed += 1
+		push_error("stages78 selftest: stage_07 window must equal the lever prop window")
+	var r7: Array = Stage07Script.run_selftest()
+	failed += int(r7[1])
+	var r8: Array = Stage08Script.run_selftest()
+	failed += int(r8[1])
+	var s7_timed := 0
+	if Stage07Script.pair_complete(1000, 1500) and Stage07Script.timed_open(1000, 1500) and Stage07Script.gate_open(true) and not Stage07Script.pair_complete(0, 5000) and not Stage07Script.pair_complete(-1, 500) and not Stage07Script.timed_open(0, 5000) and not Stage07Script.gate_open(false) and int(r7[1]) == 0:
+		var lever_packed: PackedScene = load("res://stages/world1/stage_07.tscn") as PackedScene
+		if lever_packed != null:
+			var lever_stage: Node = lever_packed.instantiate() as Node
+			if lever_stage != null:
+				var levers := lever_stage.get_node_or_null("LeverPair")
+				if levers != null and levers.has_method("pull_a") and levers.has_method("pull_b") and levers.has_method("is_paired"):
+					levers.call("pull_a", 1000)
+					var single_unpaired := not bool(levers.call("is_paired"))
+					levers.call("pull_b", 1500)
+					var pair_latched := bool(levers.call("is_paired"))
+					levers.call("reset")
+					var reset_clears := not bool(levers.call("is_paired"))
+					if single_unpaired and pair_latched and reset_clears:
+						s7_timed = 1
+					else:
+						failed += 1
+						push_error("stages78 selftest: live LeverPair must block single pulls and latch in-window pairs")
+				else:
+					failed += 1
+					push_error("stages78 selftest: stage_07 LeverPair node missing")
+				lever_stage.free()
+	else:
+		failed += 1
+		push_error("stages78 selftest: stage_07 timed pair must complete in-window and block slow runs")
+	var s8_remix := 0
+	var button_count := 0
+	var sequence_count := 0
+	var boost_count := 0
+	var seesaw_count := 0
+	var relay_count := 0
+	var remix_packed: PackedScene = load("res://stages/world1/stage_08.tscn") as PackedScene
+	if remix_packed != null:
+		var remix_stage: Node = remix_packed.instantiate() as Node
+		if remix_stage != null:
+			var hold := remix_stage.get_node_or_null("HoldButton")
+			var pads := remix_stage.get_node_or_null("SeqPads")
+			var pad := remix_stage.get_node_or_null("BoostPad")
+			var saw := remix_stage.get_node_or_null("SeeSaw")
+			var relay_a := remix_stage.get_node_or_null("RelayA")
+			var relay_b := remix_stage.get_node_or_null("RelayB")
+			if hold != null and hold.has_method("press") and hold.has_method("is_down") and pads != null and pads.has_method("press_step") and pads.has_method("is_done") and pad != null and pad.has_method("activate") and pad.has_method("get_boost") and saw != null and saw.has_method("press_left") and saw.has_method("press_right") and saw.has_method("is_balanced") and relay_a != null and relay_a.has_method("is_down") and relay_b != null and relay_b.has_method("is_down"):
+				hold.call("press")
+				pads.call("press_step", 0)
+				pads.call("press_step", 1)
+				pads.call("press_step", 2)
+				var probe = Stage08Script.BoostProbe.new()
+				var want: Vector3 = pad.call("get_boost")
+				pad.call("activate", probe)
+				var launched: bool = probe.calls == 1 and probe.last_force == want
+				probe.free()
+				saw.call("press_left")
+				var tips_alone := int(saw.call("get_tilt")) == -1 and not bool(saw.call("is_balanced"))
+				saw.call("press_right")
+				var balances := bool(saw.call("is_balanced"))
+				relay_a.call("press")
+				relay_b.call("press")
+				var carriers := (1 if bool(relay_a.call("is_down")) else 0) + (1 if bool(relay_b.call("is_down")) else 0)
+				var hold_down := bool(hold.call("is_down"))
+				var seq_done := bool(pads.call("is_done"))
+				var boost_ready := (pad.call("get_boost") as Vector3).y > 0.0
+				var balanced := bool(saw.call("is_balanced"))
+				if hold_down and seq_done and boost_ready and launched and tips_alone and balances and carriers == 2 and Stage08Script.remix_open(hold_down, seq_done, boost_ready, balanced, true, carriers) and not Stage08Script.remix_open(hold_down, seq_done, boost_ready, balanced, false, carriers) and not Stage08Script.remix_open(false, seq_done, boost_ready, balanced, true, carriers) and int(r8[1]) == 0:
+					s8_remix = 1
+				else:
+					failed += 1
+					push_error("stages78 selftest: stage_08 finale remix must open only when all five verbs hold")
+			else:
+				failed += 1
+				push_error("stages78 selftest: stage_08 finale prop nodes missing")
+			if remix_stage.has_method("count_props"):
+				var counts: Dictionary = remix_stage.call("count_props")
+				button_count = int(counts.get("button", 0))
+				sequence_count = int(counts.get("sequence", 0))
+				boost_count = int(counts.get("boost", 0))
+				seesaw_count = int(counts.get("seesaw", 0))
+				relay_count = int(counts.get("relay", 0))
+			remix_stage.free()
+	var lever_count := 0
+	var probe7: PackedScene = load("res://stages/world1/stage_07.tscn") as PackedScene
+	if probe7 != null:
+		var count_stage7: Node = probe7.instantiate() as Node
+		if count_stage7 != null and count_stage7.has_method("count_props"):
+			lever_count = int((count_stage7.call("count_props") as Dictionary).get("lever", 0))
+			count_stage7.free()
+	if lever_count < 1:
+		failed += 1
+		push_error("stages78 selftest: expected >=1 lever (got lever=%d)" % lever_count)
+	if button_count < 1 or sequence_count < 1 or boost_count < 1 or seesaw_count < 1 or relay_count < 2:
+		failed += 1
+		push_error("stages78 selftest: expected >=1 button/sequence/boost/seesaw and >=2 relays (got button=%d sequence=%d boost=%d seesaw=%d relay=%d)" % [button_count, sequence_count, boost_count, seesaw_count, relay_count])
+	if failed == 0 and s7_timed == 1 and s8_remix == 1:
+		print("STAGES78_OK s7_timed=1 s8_remix=1")
+	else:
+		push_error("STAGES78_FAIL failed=%d s7_timed=%d s8_remix=%d" % [failed, s7_timed, s8_remix])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline world sweep self-test (issue #16). The acceptance probe runs
+## `godot --headless --path . -- --selftest world14` (world 1, 2/3/4
+## players across all 8 stages), which boots the main scene, so the
+## main-scene root owns this branch: load the world-1 manifest via
+## ConfigFile, prove every stage beatable by full-roster goal entry with
+## 2, 3, and 4 dummies, and prove stages 02-08 solo-blocked through their
+## static gates (stage 01 stays the soloable control). Prints the WORLD_OK
+## line shared with the probe. Quits 1 on any failure; touches no
+## request/route/health paths.
+func _run_world14_selftest() -> void:
+	var failed := 0
+	var want := ["w1s1", "w1s2", "w1s3", "w1s4", "w1s5", "w1s6", "w1s7", "w1s8"]
+	var scenes := {
+		"w1s1": "res://stages/world1/stage_01.tscn",
+		"w1s2": "res://stages/world1/stage_02.tscn",
+		"w1s3": "res://stages/world1/stage_03.tscn",
+		"w1s4": "res://stages/world1/stage_04.tscn",
+		"w1s5": "res://stages/world1/stage_05.tscn",
+		"w1s6": "res://stages/world1/stage_06.tscn",
+		"w1s7": "res://stages/world1/stage_07.tscn",
+		"w1s8": "res://stages/world1/stage_08.tscn",
+	}
+	var manifest := ConfigFile.new()
+	if manifest.load("res://stages/world1/manifest.cfg") != OK:
+		failed += 1
+		push_error("world14 selftest: manifest.cfg failed to load")
+	else:
+		var listed: Array = manifest.get_value("world1", "stages", [])
+		for wid in want:
+			if not listed.has(wid):
+				failed += 1
+				push_error("world14 selftest: manifest [world1] stages must list %s" % wid)
+			if not manifest.has_section(wid):
+				failed += 1
+				push_error("world14 selftest: manifest must carry [%s]" % wid)
+		for wid in want:
+			for key in ["scaling_2", "scaling_3", "scaling_4"]:
+				if str(manifest.get_value(wid, key, "")) == "":
+					failed += 1
+					push_error("world14 selftest: manifest [%s] missing %s" % [wid, key])
+	if not Stage01Script.solo_clear(1):
+		failed += 1
+		push_error("world14 selftest: stage_01 warmup must stay solo-clearable (control)")
+	if Stage02Script.gate_open(1):
+		failed += 1
+		push_error("world14 selftest: stage_02 gate must stay closed for 1 holder")
+	if Stage03Script.gate_open(1):
+		failed += 1
+		push_error("world14 selftest: stage_03 gate must stay closed at progress 1")
+	if Stage04Script.cross_open(true, 1) or Stage04Script.cross_open(false, 2) or Stage04Script.solo_crossable(Stage04Script.GAP_WIDTH):
+		failed += 1
+		push_error("world14 selftest: stage_04 solo crossings must stay blocked")
+	if Stage05Script.gate_open(1, 0) or Stage05Script.gate_open(0, 1):
+		failed += 1
+		push_error("world14 selftest: stage_05 solo sides must stay blocked")
+	if Stage06Script.cross_open(true, 1) or Stage06Script.cross_open(false, 2) or Stage06Script.solo_crossable(Stage06Script.GAP_WIDTH):
+		failed += 1
+		push_error("world14 selftest: stage_06 solo crossings must stay blocked")
+	if Stage07Script.pair_complete(0, 5000) or Stage07Script.pair_complete(-1, 500) or Stage07Script.gate_open(false):
+		failed += 1
+		push_error("world14 selftest: stage_07 single and slow lever runs must stay blocked")
+	if Stage08Script.remix_open(false, true, true, true, true, 2) or Stage08Script.remix_open(true, true, true, true, true, 1) or Stage08Script.remix_open(true, true, true, true, false, 2):
+		failed += 1
+		push_error("world14 selftest: stage_08 solo remix runs must stay blocked")
+	var players2 := 0
+	var players3 := 0
+	var players4 := 0
+	for n in [2, 3, 4]:
+		var sweep_ok := true
+		for wid in want:
+			var packed: PackedScene = load(str(scenes[wid])) as PackedScene
+			if packed == null:
+				failed += 1
+				sweep_ok = false
+				push_error("world14 selftest: %s failed to load" % wid)
+				continue
+			var stage: Node = packed.instantiate() as Node
+			if stage == null:
+				failed += 1
+				sweep_ok = false
+				push_error("world14 selftest: %s failed to instantiate" % wid)
+				continue
+			var all_hits := [0]
+			stage.connect("goal_all_reached", func(): all_hits[0] += 1)
+			var dummies: Array = []
+			for i in range(n):
+				var d := Node.new()
+				dummies.append(d)
+				stage.call("notify_goal_entered", d)
+			if int(stage.call("goal_count")) != n or not bool(stage.call("is_goal_complete")) or all_hits[0] < 1:
+				failed += 1
+				sweep_ok = false
+				push_error("world14 selftest: %s must complete with %d in the goal" % [wid, n])
+			for d in dummies:
+				d.free()
+			stage.free()
+		if sweep_ok:
+			if n == 2:
+				players2 = 1
+			elif n == 3:
+				players3 = 1
+			elif n == 4:
+				players4 = 1
+	var lever_solo := 0
+	var lever7: PackedScene = load("res://stages/world1/stage_07.tscn") as PackedScene
+	if lever7 != null:
+		var solo_stage: Node = lever7.instantiate() as Node
+		if solo_stage != null:
+			var levers := solo_stage.get_node_or_null("LeverPair")
+			if levers != null and levers.has_method("pull_a") and levers.has_method("is_paired"):
+				levers.call("pull_a", 1000)
+				if not bool(levers.call("is_paired")):
+					lever_solo = 1
+				else:
+					failed += 1
+					push_error("world14 selftest: stage_07 single pull must stay unpaired")
+			else:
+				failed += 1
+				push_error("world14 selftest: stage_07 LeverPair node missing")
+			solo_stage.free()
+	if failed == 0 and players2 == 1 and players3 == 1 and players4 == 1 and lever_solo == 1:
+		print("WORLD_OK players2=1 players3=1 players4=1")
+	else:
+		push_error("WORLD_FAIL failed=%d players2=%d players3=%d players4=%d lever_solo=%d" % [failed, players2, players3, players4, lever_solo])
 	get_tree().quit(1 if failed > 0 else 0)
 
 
