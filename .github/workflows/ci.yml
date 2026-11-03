@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  skeleton:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install Godot 4.7.2
+        timeout-minutes: 5
+        run: |
+          curl -fL -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -o /tmp/godot.zip -d /tmp/godot
+          sudo install -m 0755 /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 /usr/local/bin/godot
+          godot --version
+
+      - name: Import project (populates .godot/ on a fresh checkout)
+        timeout-minutes: 5
+        run: godot --headless --path . --import
+
+      - name: Run GDScript unit tests
+        timeout-minutes: 5
+        run: godot --headless --path . --script res://tests/test_serve_logic.gd
+
+      - name: Black-box smoke test
+        timeout-minutes: 10
+        run: bash tests/smoke_serve.sh
