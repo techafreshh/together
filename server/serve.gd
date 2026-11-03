@@ -34,6 +34,8 @@ const Stage01Script := preload("res://stages/world1/stage_01.gd")
 const Stage02Script := preload("res://stages/world1/stage_02.gd")
 const Stage03Script := preload("res://stages/world1/stage_03.gd")
 const Stage04Script := preload("res://stages/world1/stage_04.gd")
+const Stage05Script := preload("res://stages/world1/stage_05.gd")
+const Stage06Script := preload("res://stages/world1/stage_06.gd")
 const NetServerScript := preload("res://server/net_server.gd")
 const RoomManagerScript := preload("res://server/room_manager.gd")
 const FlowManagerScript := preload("res://server/flow_manager.gd")
@@ -91,6 +93,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("stages34"):
 		_run_stages34_selftest()
+		return
+	if cli.has("--selftest") and cli.has("stages56"):
+		_run_stages56_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -743,5 +748,127 @@ func _run_stages12_selftest() -> void:
 		print("STAGES12_OK s1_solo=pass s2_solo_blocked=1 s2_duo=pass")
 	else:
 		push_error("STAGES12_FAIL failed=%d s1_solo=%s s2_solo_blocked=%d s2_duo=%s" % [failed, s1_solo, s2_blocked, s2_duo])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline stages56 self-test (issue #15). The acceptance probe runs
+## `godot --headless --path . -- --selftest stages56`, which boots the main
+## scene, so the main-scene root owns this branch: load the world-1
+## manifest via ConfigFile, run both stage run_selftest suites, prove the
+## see-saw predicates (stage_05 distributed weight balances, solo sides
+## stay blocked) and the gap predicates (stage_06 solo blocked, carried
+## duo crosses), count the live seesaw/relay props, and print the
+## STAGES56_OK line shared with the probe. Quits 1 on any failure;
+## touches no request/route/health paths.
+func _run_stages56_selftest() -> void:
+	var failed := 0
+	var manifest := ConfigFile.new()
+	if manifest.load("res://stages/world1/manifest.cfg") != OK:
+		failed += 1
+		push_error("stages56 selftest: manifest.cfg failed to load")
+	else:
+		var stages: Array = manifest.get_value("world1", "stages", [])
+		if not (stages.has("w1s5") and stages.has("w1s6")):
+			failed += 1
+			push_error("stages56 selftest: manifest [world1] stages must list w1s5,w1s6")
+		if not manifest.has_section("w1s5") or not manifest.has_section("w1s6"):
+			failed += 1
+			push_error("stages56 selftest: manifest must carry [w1s5] and [w1s6] sections")
+		for section in ["w1s5", "w1s6"]:
+			for key in ["scaling_2", "scaling_3", "scaling_4"]:
+				if str(manifest.get_value(section, key, "")) == "":
+					failed += 1
+					push_error("stages56 selftest: manifest [%s] missing %s" % [section, key])
+		if str(manifest.get_value("w1s5", "scene", "")) != "res://stages/world1/stage_05.tscn":
+			failed += 1
+			push_error("stages56 selftest: manifest [w1s5] scene must be stage_05.tscn")
+		if str(manifest.get_value("w1s6", "scene", "")) != "res://stages/world1/stage_06.tscn":
+			failed += 1
+			push_error("stages56 selftest: manifest [w1s6] scene must be stage_06.tscn")
+		if int(manifest.get_value("w1s5", "weight_required", 0)) != Stage05Script.WEIGHT_REQUIRED:
+			failed += 1
+			push_error("stages56 selftest: manifest [w1s5] weight_required must be 2")
+		if float(manifest.get_value("w1s6", "gap_width", 0.0)) != Stage06Script.GAP_WIDTH:
+			failed += 1
+			push_error("stages56 selftest: manifest [w1s6] gap_width must be 12.0")
+		if int(manifest.get_value("w1s6", "carry_required", 0)) != Stage06Script.CARRY_REQUIRED:
+			failed += 1
+			push_error("stages56 selftest: manifest [w1s6] carry_required must be 2")
+	var r5: Array = Stage05Script.run_selftest()
+	failed += int(r5[1])
+	var r6: Array = Stage06Script.run_selftest()
+	failed += int(r6[1])
+	var s5_weight := 0
+	var saw_packed: PackedScene = load("res://stages/world1/stage_05.tscn") as PackedScene
+	if saw_packed != null:
+		var saw_stage: Node = saw_packed.instantiate() as Node
+		if saw_stage != null:
+			var saw := saw_stage.get_node_or_null("SeeSaw")
+			if saw != null and saw.has_method("press_left") and saw.has_method("press_right") and saw.has_method("is_balanced"):
+				saw.call("press_left")
+				var tips_alone := int(saw.call("get_tilt")) == -1 and not bool(saw.call("is_balanced"))
+				saw.call("press_right")
+				var balances := int(saw.call("get_tilt")) == 0 and bool(saw.call("is_balanced"))
+				if Stage05Script.weight_ok(true, true) and not Stage05Script.weight_ok(true, false) and Stage05Script.gate_open(1, 1) and not Stage05Script.gate_open(1, 0) and tips_alone and balances and int(r5[1]) == 0:
+					s5_weight = 1
+				else:
+					failed += 1
+					push_error("stages56 selftest: stage_05 distributed weight must balance")
+			else:
+				failed += 1
+				push_error("stages56 selftest: stage_05 SeeSaw node missing")
+			saw_stage.free()
+	var s6_carry := 0
+	var s6_solo_blocked := 0
+	var relay_packed: PackedScene = load("res://stages/world1/stage_06.tscn") as PackedScene
+	if relay_packed != null:
+		var relay_stage: Node = relay_packed.instantiate() as Node
+		if relay_stage != null:
+			var relay_a := relay_stage.get_node_or_null("RelayA")
+			var relay_b := relay_stage.get_node_or_null("RelayB")
+			if relay_a != null and relay_b != null and relay_a.has_method("is_down") and relay_b.has_method("is_down"):
+				var starts_up := not bool(relay_a.call("is_down")) and not bool(relay_b.call("is_down"))
+				relay_a.call("press")
+				var single_holders := (1 if bool(relay_a.call("is_down")) else 0) + (1 if bool(relay_b.call("is_down")) else 0)
+				var single_closed := single_holders == 1 and not Stage06Script.cross_open(true, single_holders)
+				relay_b.call("press")
+				var duo_holders := (1 if bool(relay_a.call("is_down")) else 0) + (1 if bool(relay_b.call("is_down")) else 0)
+				if Stage06Script.carry_crossable(Stage06Script.GAP_WIDTH) and duo_holders == 2 and Stage06Script.cross_open(true, duo_holders) and single_closed and int(r6[1]) == 0:
+					s6_carry = 1
+				else:
+					failed += 1
+					push_error("stages56 selftest: stage_06 carried duo must open the crossing")
+				if starts_up and not Stage06Script.solo_crossable(Stage06Script.GAP_WIDTH) and not Stage06Script.cross_open(false, 1) and not Stage06Script.cross_open(true, 1) and int(r6[1]) == 0:
+					s6_solo_blocked = 1
+				else:
+					failed += 1
+					push_error("stages56 selftest: stage_06 solo crossing must stay blocked")
+			else:
+				failed += 1
+				push_error("stages56 selftest: stage_06 RelayA/RelayB nodes missing")
+			relay_stage.free()
+	var seesaw_count := 0
+	var relay_count := 0
+	var probe5: PackedScene = load("res://stages/world1/stage_05.tscn") as PackedScene
+	if probe5 != null:
+		var count_stage5: Node = probe5.instantiate() as Node
+		if count_stage5 != null and count_stage5.has_method("count_props"):
+			var counts5: Dictionary = count_stage5.call("count_props")
+			seesaw_count = int(counts5.get("seesaw", 0))
+			count_stage5.free()
+	var probe6: PackedScene = load("res://stages/world1/stage_06.tscn") as PackedScene
+	if probe6 != null:
+		var count_stage6: Node = probe6.instantiate() as Node
+		if count_stage6 != null and count_stage6.has_method("count_props"):
+			var counts6: Dictionary = count_stage6.call("count_props")
+			relay_count = int(counts6.get("relay", 0))
+			count_stage6.free()
+	if seesaw_count < 1 or relay_count < 2:
+		failed += 1
+		push_error("stages56 selftest: expected >=1 seesaw and >=2 relays (got seesaw=%d relay=%d)" % [seesaw_count, relay_count])
+	if failed == 0 and s5_weight == 1 and s6_carry == 1 and s6_solo_blocked == 1:
+		print("STAGES56_OK s5_weight=1 s6_carry=1 s6_solo_blocked=1")
+	else:
+		push_error("STAGES56_FAIL failed=%d s5_weight=%d s6_carry=%d s6_solo_blocked=%d" % [failed, s5_weight, s6_carry, s6_solo_blocked])
 	get_tree().quit(1 if failed > 0 else 0)
 
