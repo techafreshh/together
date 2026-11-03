@@ -31,6 +31,7 @@ const LeverScript := preload("res://actors/props/lever.gd")
 const SfxScript := preload("res://autoload/Sfx.gd")
 const NetServerScript := preload("res://server/net_server.gd")
 const RoomManagerScript := preload("res://server/room_manager.gd")
+const FlowManagerScript := preload("res://server/flow_manager.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -70,6 +71,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("rooms"):
 		_run_rooms_selftest()
+		return
+	if cli.has("--selftest") and cli.has("flow"):
+		_run_flow_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -363,6 +367,76 @@ func _run_rooms_selftest() -> void:
 		print("ROOMS_OK codes_unique=%d players=%d" % [RoomManagerScript.SELFTEST_ROOMS, RoomManagerScript.SELFTEST_PLAYERS])
 	else:
 		push_error("ROOMS_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline flow self-test (issue #11). The acceptance probe runs
+## `godot --headless --path . -- --selftest flow`, which boots the main
+## scene, so the main-scene root owns this branch: create 1 room via the
+## real RoomManager, join a second peer, host-select w1s1 through the real
+## FlowManager, prove the non-host select is rejected, boot the stage, walk
+## both peers into the goal, and build the coin results. Prints the FLOW_OK
+## and HOST_GUARD_OK lines shared with the acceptance probe and quits.
+func _run_flow_selftest() -> void:
+	var failed := 0
+	var boot_ok := 0
+	var all_ok := 0
+	var res_ok := 0
+	var guard_ok := 0
+	var rooms = RoomManagerScript.new()
+	var flow = FlowManagerScript.new()
+	var shared: Array = FlowManagerScript.run_selftest()
+	failed += int(shared[1])
+	var created: Dictionary = rooms.create_room("Host", "hash-host")
+	var code := str(created.get("code", ""))
+	var host_id := int(created.get("player_id", 0))
+	var joined: Dictionary = rooms.join_room(code, "Guest", "hash-guest")
+	var guest_id := int(joined.get("player_id", 0))
+	if bool(created.get("ok", false)) and bool(joined.get("ok", false)) and code != "":
+		flow.bind_room(code, [host_id, guest_id], host_id)
+		var picked: Dictionary = flow.select_stage(code, host_id, host_id, "w1s1")
+		var denied: Dictionary = flow.select_stage(code, guest_id, host_id, "w1s1")
+		if not bool(denied.get("ok", false)) and str(denied.get("error", "")) == "host_only":
+			guard_ok = 1
+		else:
+			failed += 1
+			push_error("flow selftest: non-host select must fail host_only")
+		if bool(picked.get("ok", false)):
+			var started: Dictionary = flow.start_stage(code)
+			var stage_boot: Dictionary = started.get("stage_boot", {})
+			if bool(started.get("ok", false)) and str(stage_boot.get("stage_id", "")) == "w1s1" and (stage_boot.get("checkpoints", []) as Array).size() == 2 and (stage_boot.get("spawn_map", {}) as Dictionary).size() == 2:
+				boot_ok = 1
+			else:
+				failed += 1
+				push_error("flow selftest: stage_boot must carry stage_id, checkpoints, spawn_map")
+			flow.notify_goal(code, host_id)
+			if flow.is_goal_all(code):
+				failed += 1
+				push_error("flow selftest: single goal must not clear the stage")
+			flow.notify_goal(code, guest_id)
+			if flow.is_goal_all(code) and flow.goal_all(code):
+				all_ok = 1
+			else:
+				failed += 1
+				push_error("flow selftest: both goals must set goal_all")
+			var built: Dictionary = flow.build_results(code)
+			var results: Dictionary = built.get("results", {})
+			if bool(built.get("ok", false)) and results.has("clears") and results.has("bests") and results.has("coins_awarded"):
+				res_ok = 1
+			else:
+				failed += 1
+				push_error("flow selftest: results must carry clears, bests, coins_awarded")
+		else:
+			failed += 1
+			push_error("flow selftest: host select_stage w1s1 rejected")
+	else:
+		failed += 1
+		push_error("flow selftest: room create+join for 2 peers failed")
+	if failed == 0 and boot_ok == 1 and all_ok == 1 and res_ok == 1 and guard_ok == 1:
+		print("FLOW_OK stage_boot=1 goal_all=1 results=1")
+		print("HOST_GUARD_OK=1")
+	else:
+		push_error("FLOW_FAIL failed=%d boot=%d all=%d res=%d guard=%d" % [failed, boot_ok, all_ok, res_ok, guard_ok])
 	get_tree().quit(1 if failed > 0 else 0)
 
 
