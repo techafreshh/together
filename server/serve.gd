@@ -30,6 +30,7 @@ const SeesawScript := preload("res://actors/props/seesaw.gd")
 const LeverScript := preload("res://actors/props/lever.gd")
 const SfxScript := preload("res://autoload/Sfx.gd")
 const NetServerScript := preload("res://server/net_server.gd")
+const RoomManagerScript := preload("res://server/room_manager.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -66,6 +67,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("sfx"):
 		_run_sfx_selftest()
+		return
+	if cli.has("--selftest") and cli.has("rooms"):
+		_run_rooms_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -345,6 +349,20 @@ func _run_flop_selftest() -> void:
 		print("FLOP_OK respawn_ms=%d" % respawn_ms)
 	else:
 		push_error("FLOP_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline rooms self-test (issue #10). The acceptance probe runs
+## `godot --headless --path . -- --selftest rooms`, which boots the main
+## scene, so the main-scene root owns this branch: run the synchronous
+## in-memory lobby checks shared with the room manager and quit.
+func _run_rooms_selftest() -> void:
+	var result: Array = RoomManagerScript.run_selftest()
+	var failed := int(result[1])
+	if failed == 0:
+		print("ROOMS_OK codes_unique=%d players=%d" % [RoomManagerScript.SELFTEST_ROOMS, RoomManagerScript.SELFTEST_PLAYERS])
+	else:
+		push_error("ROOMS_FAIL failed=%d" % failed)
 	get_tree().quit(1 if failed > 0 else 0)
 
 

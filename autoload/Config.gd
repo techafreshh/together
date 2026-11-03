@@ -5,6 +5,11 @@ extends Node
 
 const VERSION: String = "0.1.0"
 const DEFAULT_PORT: int = 8080
+## Lobby caps for the rooms lobby (issue #10): at most MAX_ROOMS concurrent
+## rooms, each staging between MIN_ROOM_PLAYERS and MAX_ROOM_PLAYERS players.
+const MAX_ROOMS: int = 64
+const MIN_ROOM_PLAYERS: int = 2
+const MAX_ROOM_PLAYERS: int = 4
 
 
 ## Parses OS.get_cmdline_user_args() style args (--serve flag, --port <n>
