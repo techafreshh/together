@@ -27,6 +27,7 @@ func _ready() -> void:
 	if kill != null and kill.has_signal("body_entered"):
 		if not kill.is_connected("body_entered", _on_kill_body):
 			kill.connect("body_entered", _on_kill_body)
+	_play_music()
 
 
 ## Kill-plane forwarder: flop the body, falling back to a plain respawn.
@@ -48,6 +49,17 @@ func _play_sfx(sfx_name: String) -> void:
 	var bus := get_node_or_null("/root/Sfx")
 	if bus != null and bus.has_method("play"):
 		bus.call("play", sfx_name)
+
+
+## Guarded music autostart: starts the looping menu/stage track through
+## the Sfx autoload when present, silent otherwise so scene instantiations
+## without autoloads never error.
+func _play_music() -> void:
+	if not is_inside_tree():
+		return
+	var bus := get_node_or_null("/root/Sfx")
+	if bus != null and bus.has_method("play_music"):
+		bus.call("play_music")
 
 
 ## Ordered spawn markers (Spawn1..Spawn4) for roster placement.
