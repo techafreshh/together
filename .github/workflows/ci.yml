@@ -34,6 +34,7 @@ jobs:
         run: |
           godot --headless --path . --script res://tests/test_serve_logic.gd
           godot --headless --path . --script res://tests/test_flop_logic.gd
+          godot --headless --path . --script res://tests/test_grab_logic.gd
           godot --headless --path . --script res://tests/test_scaffold_logic.gd
           godot --headless --path . --script res://tests/test_net_logic.gd
           godot --headless --path . --script res://tests/test_sfx_logic.gd
