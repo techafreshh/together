@@ -53,6 +53,7 @@ jobs:
           godot --headless --path . --script res://tests/test_export_logic.gd
           godot --headless --path . --script res://tests/test_desktop_logic.gd
           godot --headless --path . --script res://tests/test_config_logic.gd
+          godot --headless --path . --script res://tests/test_full_world_logic.gd
           godot --headless --path . -- --selftest audiovisual
           godot --headless --path . -- --selftest perf
 
@@ -69,6 +70,13 @@ jobs:
           godot --headless --path . -- --selftest desktop_preset > /tmp/desktop_preset.log 2>&1
           cat /tmp/desktop_preset.log
           grep -q 'DESKTOP_OK preset=1' /tmp/desktop_preset.log
+
+      - name: Full-world probe (2-bot w1s1..w1s8 sweep, no sockets)
+        timeout-minutes: 5
+        run: |
+          godot --headless --path . -- --selftest full_world > /tmp/full_world_probe.log 2>&1
+          cat /tmp/full_world_probe.log
+          grep -q 'FULL_WORLD_OK stages=8 coins=1 wardrobe=1 persist=1' /tmp/full_world_probe.log
 
       - name: Config selftest (parse-level, no sockets)
         timeout-minutes: 5
