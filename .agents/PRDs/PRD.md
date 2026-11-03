@@ -73,10 +73,11 @@ Sessions run on a **headless Godot dedicated server** on the owner's existing VP
 - [ ] Menu → room → world/stage select → stage → results → next
 
 **Deployment**
-- [ ] Web export (Cloudflare Pages static hosting, cross-origin isolation headers)
-- [ ] Desktop (Windows) export on a private itch.io page
-- [ ] ECS-free but scripted deploy: one command to build + upload server, systemd service on VPS
-- [ ] TLS for the game socket on the owner's domain (Caddy + Let's Encrypt or Cloudflare proxy)
+- [ ] CI workflow (GitHub Actions) running headless Godot checks (parse/import + smoke) on every PR
+- [ ] Web export (Cloudflare Pages static hosting, cross-origin isolation headers) — *(page/account setup = operator, see checklist)*
+- [ ] Desktop (Windows) export on a private itch.io page — *(page/account = operator)*
+- [ ] ECS-free but scripted deploy: one command to build + upload server, systemd service on VPS — *(VPS hands-on = operator)*
+- [ ] TLS for the game socket on the owner's domain (Caddy + Let's Encrypt or Cloudflare proxy) — *(DNS/domain = operator)*
 
 ### Out of Scope (deferred)
 
@@ -160,7 +161,7 @@ together/
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Engine | Godot 4.x (latest stable at project start; current skills target 4.7) | Owner's choice; supports web + desktop + headless server from one project |
+| Engine | Godot **4.7-stable**, pinned | Matches the factory's `factory-godot-r1` machine snapshot (Godot 4.7 + web export templates); GDScript only |
 | Language | GDScript | Whole codebase; no GDExtension/C# |
 | Netcode | Godot high-level multiplayer over `WebSocketMultiplayerPeer` | Server + browser-capable |
 | Server host | Owner's Linux VPS, systemd service | Headless export of the same project |
@@ -188,6 +189,16 @@ together/
 ## 10. API Specification (multiplayer protocol sketch)
 
 Not REST — a session protocol over the WebSocket multiplayer connection. Message *families* (exact channel/RPC naming is the builder's):
+
+**Server contract (pinned — the factory's acceptance scenarios test exactly this):**
+The headless dedicated server boots as a single foreground command:
+`godot --headless --path . -- --serve --port $PORT`
+and serves, on that one port:
+- `GET /` → **200** with JSON health (at least `{"ok": true}` + a version field) — plain HTTP, no upgrade;
+- WebSocket upgrade on **`/ws`** → the game socket (all protocol messages above flow here);
+- anything else → 4xx, never 500.
+
+The walking-skeleton issue delivers exactly this contract.
 
 | Direction | Message | Payload (sketch) |
 |---|---|---|
@@ -289,6 +300,16 @@ Goal: the two-minute test passes for real friends.
 ---
 
 ## 15. Appendix
+
+### Operator checklist (NOT buildable issues — laps cannot do these; kept here so the slicer never turns them into GitHub issues)
+
+1. Create the itch.io private page and upload the desktop zip lap artifact.
+2. Create the Cloudflare Pages project pointing at the repo's web-export artifact; set COOP/COEP headers; connect the domain DNS.
+3. Issuing/configuring TLS on the VPS (Caddy + Let's Encrypt, or Cloudflare proxy) for `wss://`.
+4. Install and start the systemd service for the platform's release artifact (hands-on VPS step); run the one-command deploy script thereafter.
+5. Share the production link + invite friends; Discord playtest coordination.
+
+### Repo facts
 
 - **Source design doc:** `docs/superpowers/specs/2026-11-03-together-coop-platformer-design.md` (contains the approaches considered and the owner's on-the-record decisions; this PRD inherits them)
 - **Installed gamedev skills** (project-local, `.agents/skills/`): Tier 1 — godot-multiplayer, godot-physics, physics-tuning, godot-3d-essentials, game-feel, godot-export, godot-gdscript-headless-testing; Tier 2 — level-design, platformer, godot-ui-control, camera-systems, godot-audio, save-systems, itch-publish, performance-optimization, godot-shaders
