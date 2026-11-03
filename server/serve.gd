@@ -20,6 +20,7 @@ extends Node
 
 const ConfigScript := preload("res://autoload/Config.gd")
 const ControllerScript := preload("res://actors/player/controller.gd")
+const RagdollScript := preload("res://actors/player/ragdoll.gd")
 const TuningScript := preload("res://actors/player/tuning.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -39,6 +40,9 @@ func _ready() -> void:
 	var cli: PackedStringArray = OS.get_cmdline_user_args()
 	if cli.has("--selftest") and cli.has("controller"):
 		_run_controller_selftest()
+		return
+	if cli.has("--selftest") and cli.has("flop"):
+		_run_flop_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -219,6 +223,21 @@ func _run_controller_selftest() -> void:
 		print("CONTROLLER_OK jump_arc_ms=%d coyote_ms=%d" % [TuningScript.jump_arc_ms(), TuningScript.coyote_ms])
 	else:
 		push_error("CONTROLLER_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+func _run_flop_selftest() -> void:
+	var result: Array = ControllerScript.run_flop_selftest()
+	var ragdoll_result: Array = RagdollScript.run_selftest()
+	var failed := int(result[1]) + int(ragdoll_result[1])
+	var respawn_ms := ControllerScript.simulate_flop_respawn_ms()
+	if respawn_ms >= 3000:
+		failed += 1
+		push_error("flop selftest: respawn_ms=%d must be < 3000" % respawn_ms)
+	if failed == 0:
+		print("FLOP_OK respawn_ms=%d" % respawn_ms)
+	else:
+		push_error("FLOP_FAIL failed=%d" % failed)
 	get_tree().quit(1 if failed > 0 else 0)
 
 

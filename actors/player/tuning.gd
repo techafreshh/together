@@ -15,6 +15,14 @@ const jump_cut: float = 0.45
 const max_fall_speed: float = 30.0
 ## Horizontal response rate (1/s): reaches top speed in ~0.08 s on ground.
 const ground_response: float = 12.0
+## Kill-plane depth: falling below this y triggers flop + respawn.
+const kill_y: float = -10.0
+## Scripted flop visual length in ms (tip-over/spin tween).
+const flop_duration_ms: int = 800
+## Flop-to-control-restored delay in ms; must stay under 3000.
+const respawn_delay_ms: int = 1200
+## Downward speed (m/s) above which a landing triggers the flop.
+const hard_impact_speed: float = 22.0
 
 
 ## Symmetric-arc air-time estimate in ms (rise gravity only), used for the

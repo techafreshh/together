@@ -1,0 +1,23 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://actors/props/killplane.gd" id="1_killplane"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_kill"]
+size = Vector3(100, 1, 100)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kill"]
+transparency = 1
+albedo_color = Color(0.85, 0.36, 0.22, 0.35)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kill"]
+material = SubResource("StandardMaterial3D_kill")
+size = Vector3(100, 1, 100)
+
+[node name="KillPlane" type="Area3D"]
+script = ExtResource("1_killplane")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_kill")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_kill")
