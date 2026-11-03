@@ -32,6 +32,8 @@ const LeverScript := preload("res://actors/props/lever.gd")
 const SfxScript := preload("res://autoload/Sfx.gd")
 const Stage01Script := preload("res://stages/world1/stage_01.gd")
 const Stage02Script := preload("res://stages/world1/stage_02.gd")
+const Stage03Script := preload("res://stages/world1/stage_03.gd")
+const Stage04Script := preload("res://stages/world1/stage_04.gd")
 const NetServerScript := preload("res://server/net_server.gd")
 const RoomManagerScript := preload("res://server/room_manager.gd")
 const FlowManagerScript := preload("res://server/flow_manager.gd")
@@ -86,6 +88,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("stages12"):
 		_run_stages12_selftest()
+		return
+	if cli.has("--selftest") and cli.has("stages34"):
+		_run_stages34_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -578,6 +583,101 @@ func _run_resilience_selftest() -> void:
 		print("RESILIENCE_OK continued=1 restarted_below2=1 latejoin_lobby=1")
 	else:
 		push_error("RESILIENCE_FAIL failed=%d continued=%d restarted=%d lobby=%d" % [failed, continued, restarted_below2, latejoin_lobby])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline stages34 self-test (issue #14). The acceptance probe runs
+## `godot --headless --path . -- --selftest stages34`, which boots the main
+## scene, so the main-scene root owns this branch: load the world-1
+## manifest via ConfigFile, run both stage run_selftest suites, prove the
+## order predicates (stage_03 correct run completes, wrong step resets)
+## and the gap predicates (stage_04 solo blocked, boosted duo crosses),
+## count the live button/boost props via count_props, and print the
+## STAGES34_OK and PROPS_OK lines shared with the probe. Quits 1 on any
+## failure; touches no request/route/health paths.
+func _run_stages34_selftest() -> void:
+	var failed := 0
+	var manifest := ConfigFile.new()
+	if manifest.load("res://stages/world1/manifest.cfg") != OK:
+		failed += 1
+		push_error("stages34 selftest: manifest.cfg failed to load")
+	else:
+		var stages: Array = manifest.get_value("world1", "stages", [])
+		if not (stages.has("w1s3") and stages.has("w1s4")):
+			failed += 1
+			push_error("stages34 selftest: manifest [world1] stages must list w1s3,w1s4")
+		if not manifest.has_section("w1s3") or not manifest.has_section("w1s4"):
+			failed += 1
+			push_error("stages34 selftest: manifest must carry [w1s3] and [w1s4] sections")
+		for section in ["w1s3", "w1s4"]:
+			for key in ["scaling_2", "scaling_3", "scaling_4"]:
+				if str(manifest.get_value(section, key, "")) == "":
+					failed += 1
+					push_error("stages34 selftest: manifest [%s] missing %s" % [section, key])
+		if str(manifest.get_value("w1s3", "scene", "")) != "res://stages/world1/stage_03.tscn":
+			failed += 1
+			push_error("stages34 selftest: manifest [w1s3] scene must be stage_03.tscn")
+		if str(manifest.get_value("w1s4", "scene", "")) != "res://stages/world1/stage_04.tscn":
+			failed += 1
+			push_error("stages34 selftest: manifest [w1s4] scene must be stage_04.tscn")
+		if int(manifest.get_value("w1s4", "cross_required", 0)) != Stage04Script.CROSS_REQUIRED:
+			failed += 1
+			push_error("stages34 selftest: manifest [w1s4] cross_required must be 2")
+	var r3: Array = Stage03Script.run_selftest()
+	failed += int(r3[1])
+	var r4: Array = Stage04Script.run_selftest()
+	failed += int(r4[1])
+	var s3_order := 0
+	if Stage03Script.order_matches([0, 1, 2]) and not Stage03Script.order_matches([0, 2, 1]) and Stage03Script.next_progress(2, 2) == 3 and Stage03Script.next_progress(1, 2) == 0 and Stage03Script.gate_open(3) and not Stage03Script.gate_open(1) and int(r3[1]) == 0:
+		s3_order = 1
+	else:
+		failed += 1
+		push_error("stages34 selftest: stage_03 ordered run must complete and reset")
+	var live_launch := false
+	var probe_packed: PackedScene = load("res://stages/world1/stage_04.tscn") as PackedScene
+	if probe_packed != null:
+		var probe_stage: Node = probe_packed.instantiate() as Node
+		if probe_stage != null:
+			var pad := probe_stage.get_node_or_null("BoostPad")
+			if pad != null and pad.has_method("activate") and pad.has_method("get_boost"):
+				var probe = Stage04Script.BoostProbe.new()
+				var want: Vector3 = pad.call("get_boost")
+				pad.call("activate", probe)
+				if probe.calls == 1 and probe.last_force == want:
+					live_launch = true
+				probe.free()
+			probe_stage.free()
+	var s4_boost := 0
+	if Stage04Script.boost_crossable(Stage04Script.GAP_WIDTH) and live_launch and int(r4[1]) == 0:
+		s4_boost = 1
+	else:
+		failed += 1
+		push_error("stages34 selftest: stage_04 boosted crossing must launch")
+	var s4_solo_blocked := 0
+	if not Stage04Script.solo_crossable(Stage04Script.GAP_WIDTH) and not Stage04Script.cross_open(false, 1) and int(r4[1]) == 0:
+		s4_solo_blocked = 1
+	else:
+		failed += 1
+		push_error("stages34 selftest: stage_04 solo crossing must stay blocked")
+	var button_count := 0
+	var boost_count := 0
+	var count_packed: PackedScene = load("res://stages/world1/stage_04.tscn") as PackedScene
+	if count_packed != null:
+		var count_stage: Node = count_packed.instantiate() as Node
+		if count_stage != null and count_stage.has_method("count_props"):
+			var counts: Dictionary = count_stage.call("count_props")
+			button_count = int(counts.get("button", 0))
+			boost_count = int(counts.get("boost", 0))
+			count_stage.free()
+	if button_count >= 1 and boost_count >= 1:
+		print("PROPS_OK button=%d boost=%d" % [button_count, boost_count])
+	else:
+		failed += 1
+		push_error("stages34 selftest: stage_04 must carry >=1 button and >=1 boost (got button=%d boost=%d)" % [button_count, boost_count])
+	if failed == 0 and s3_order == 1 and s4_boost == 1 and s4_solo_blocked == 1:
+		print("STAGES34_OK s3_order=1 s4_boost=1 s4_solo_blocked=1")
+	else:
+		push_error("STAGES34_FAIL failed=%d s3_order=%d s4_boost=%d s4_solo_blocked=%d" % [failed, s3_order, s4_boost, s4_solo_blocked])
 	get_tree().quit(1 if failed > 0 else 0)
 
 
