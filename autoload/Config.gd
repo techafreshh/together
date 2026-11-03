@@ -16,16 +16,43 @@ const MAX_ROOM_PLAYERS: int = 4
 const DEFAULT_DATA_DIR: String = "user://players"
 const MIN_MAX_ROOMS: int = 1
 const MAX_MAX_ROOMS: int = 256
+## TLS mode for the headless server (issue #23): free-form non-empty string,
+## default `"off"`; documented values `off` | `behind-proxy`. Unknown values
+## are accepted verbatim and never fail boot — actual TLS termination stays
+## operator work (Caddy/Cloudflare). Flag `--tls-mode` beats `TOGETHER_TLS_MODE`.
+const DEFAULT_TLS_MODE: String = "off"
 
 
 ## Parses OS.get_cmdline_user_args() style args (--serve flag, --port <n>
 ## value or --port=<n>). Invalid or missing ports fall back to DEFAULT_PORT.
+## Flag precedence: explicit flag > `TOGETHER_*` env > compiled default.
 static func parse_serve_args(args: PackedStringArray) -> Dictionary:
-	var result: Dictionary = {"serve": false, "port": DEFAULT_PORT, "net_port": 0, "data_dir": DEFAULT_DATA_DIR, "max_rooms": MAX_ROOMS}
+	var result: Dictionary = {"serve": false, "port": DEFAULT_PORT, "net_port": 0, "data_dir": DEFAULT_DATA_DIR, "max_rooms": MAX_ROOMS, "tls_mode": DEFAULT_TLS_MODE}
+	if OS.has_environment("TOGETHER_PORT"):
+		var env_port := _parse_port(OS.get_environment("TOGETHER_PORT"))
+		if env_port > 0:
+			result["port"] = env_port
+	if OS.has_environment("TOGETHER_NET_PORT"):
+		var env_net := _parse_port(OS.get_environment("TOGETHER_NET_PORT"))
+		if env_net > 0:
+			result["net_port"] = env_net
+	if OS.has_environment("TOGETHER_DATA_DIR"):
+		var env_dir := OS.get_environment("TOGETHER_DATA_DIR").strip_edges()
+		if env_dir != "":
+			result["data_dir"] = env_dir
+	if OS.has_environment("TOGETHER_MAX_ROOMS"):
+		var env_max := _parse_max_rooms(OS.get_environment("TOGETHER_MAX_ROOMS"))
+		if env_max > 0:
+			result["max_rooms"] = env_max
+	if OS.has_environment("TOGETHER_TLS_MODE"):
+		var env_tls := OS.get_environment("TOGETHER_TLS_MODE").strip_edges()
+		if env_tls != "":
+			result["tls_mode"] = env_tls
 	var want_port_value := false
 	var want_net_value := false
 	var want_data_value := false
 	var want_max_value := false
+	var want_tls_value := false
 	for raw: String in args:
 		var arg := raw.strip_edges()
 		if want_port_value:
@@ -52,6 +79,12 @@ static func parse_serve_args(args: PackedStringArray) -> Dictionary:
 			if r > 0:
 				result["max_rooms"] = r
 			continue
+		if want_tls_value:
+			want_tls_value = false
+			var tv := arg.strip_edges()
+			if tv != "":
+				result["tls_mode"] = tv
+			continue
 		if arg == "--serve":
 			result["serve"] = true
 		elif arg == "--port":
@@ -62,6 +95,8 @@ static func parse_serve_args(args: PackedStringArray) -> Dictionary:
 			want_data_value = true
 		elif arg == "--max-rooms":
 			want_max_value = true
+		elif arg == "--tls-mode":
+			want_tls_value = true
 		elif arg.begins_with("--port="):
 			var inline := _parse_port(arg.get_slice("=", 1))
 			if inline > 0:
@@ -78,6 +113,10 @@ static func parse_serve_args(args: PackedStringArray) -> Dictionary:
 			var max_inline := _parse_max_rooms(arg.get_slice("=", 1))
 			if max_inline > 0:
 				result["max_rooms"] = max_inline
+		elif arg.begins_with("--tls-mode="):
+			var tls_inline := arg.get_slice("=", 1).strip_edges()
+			if tls_inline != "":
+				result["tls_mode"] = tls_inline
 	return result
 
 
