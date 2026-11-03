@@ -1,0 +1,80 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://stages/world1/stage_07.gd" id="1_stage07"]
+[ext_resource type="PackedScene" path="res://actors/props/checkpoint.tscn" id="2_checkpoint"]
+[ext_resource type="PackedScene" path="res://actors/props/goal.tscn" id="3_goal"]
+[ext_resource type="PackedScene" path="res://actors/props/lever.tscn" id="4_lever"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grass"]
+albedo_color = Color(0.372549, 0.717647, 0.352941, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
+size = Vector3(10, 1, 30)
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("StandardMaterial3D_grass")
+size = Vector3(10, 1, 30)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_kill"]
+size = Vector3(100, 1, 100)
+
+[sub_resource type="Environment" id="Environment_lever"]
+background_mode = 1
+background_color = Color(0.1, 0.12, 0.18, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.7, 0.75, 0.85, 1)
+ambient_light_energy = 0.8
+tonemap_mode = 2
+
+[node name="Stage07" type="Node3D"]
+script = ExtResource("1_stage07")
+
+[node name="Spawn1" type="Marker3D" parent="."]
+position = Vector3(-3, 1, 11)
+
+[node name="Spawn2" type="Marker3D" parent="."]
+position = Vector3(-1, 1, 11)
+
+[node name="Spawn3" type="Marker3D" parent="."]
+position = Vector3(1, 1, 11)
+
+[node name="Spawn4" type="Marker3D" parent="."]
+position = Vector3(3, 1, 11)
+
+[node name="Checkpoints" type="Node3D" parent="."]
+
+[node name="Checkpoint1" parent="Checkpoints" instance=ExtResource("2_checkpoint")]
+position = Vector3(0, 0, 6)
+checkpoint_id = "cp1"
+
+[node name="Checkpoint2" parent="Checkpoints" instance=ExtResource("2_checkpoint")]
+position = Vector3(0, 0, -2)
+checkpoint_id = "cp2"
+
+[node name="KillPlane" type="Area3D" parent="."]
+position = Vector3(0, -10, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="KillPlane"]
+shape = SubResource("BoxShape3D_kill")
+
+[node name="LeverPair" parent="." instance=ExtResource("4_lever")]
+position = Vector3(0, 0, 2)
+
+[node name="Goal" parent="." instance=ExtResource("3_goal")]
+position = Vector3(0, 0, -12)
+
+[node name="LeverFloor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LeverFloor"]
+shape = SubResource("BoxShape3D_floor")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LeverFloor"]
+mesh = SubResource("BoxMesh_floor")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.785398, -0.523599, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_lever")

@@ -45,6 +45,7 @@ jobs:
           godot --headless --path . --script res://tests/test_stages12_logic.gd
           godot --headless --path . --script res://tests/test_stages34_logic.gd
           godot --headless --path . --script res://tests/test_stages56_logic.gd
+          godot --headless --path . --script res://tests/test_stages78_logic.gd
 
       - name: Skeleton health probe (GET / expects 200)
         timeout-minutes: 5
