@@ -1,0 +1,35 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://actors/props/checkpoint.gd" id="1_checkpoint"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cp"]
+size = Vector3(2, 3, 2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cp_grass"]
+albedo_color = Color(0.372549, 0.717647, 0.352941, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cp"]
+material = SubResource("StandardMaterial3D_cp_grass")
+size = Vector3(2, 3, 2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cp_sand"]
+albedo_color = Color(0.890196, 0.717647, 0.419608, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_cp_cap"]
+material = SubResource("StandardMaterial3D_cp_sand")
+size = Vector3(2.2, 0.3, 2.2)
+
+[node name="Checkpoint" type="Area3D"]
+script = ExtResource("1_checkpoint")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.5, 0)
+shape = SubResource("BoxShape3D_cp")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.5, 0)
+mesh = SubResource("BoxMesh_cp")
+
+[node name="CapMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 3.1, 0)
+mesh = SubResource("BoxMesh_cp_cap")
