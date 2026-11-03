@@ -9,7 +9,8 @@ Date: 2026-11-03.
 A small co-op platformer in the spirit of Roblox's *Together [Party Game]*:
 2–4 friends clear short obstacle stages that are impossible alone — they
 must cooperate (hold buttons, boost jumps, carry each other) while goofy
-full-ragdoll physics turns every failure into a shared laugh.
+ragdoll moments — flops, crashes, friend-catapults — turn every failure
+into a shared laugh.
 
 Built as a **fun project to play with a friend group** — not a commercial
 push. Lean scope, polish where it counts (feel, comedy, instant access).
@@ -25,9 +26,11 @@ in this design serves that promise.
   cooperation comes from position and timing (hold a button, see-saws,
   boost jumps, passing players across gaps), never from stronger/weaker
   character classes.
-- G3. **Full ragdoll on failure + grab/carry other players.** Ragdolling
-  is comedy, never punishment: fail → flop → respawn at checkpoint
-  together with the group.
+- G3. **Grab/carry other players, ragdoll flop on failure.** Walking uses
+  a precise, responsive platformer controller — not perpetually floppy
+  physics; ragdoll triggers on failure and big impacts. Failing is
+  comedy, never punishment: fail → flop → instant self-respawn at your
+  checkpoint while friends keep playing.
 - G4. **Playable in the browser with zero install** (web export), plus a
   downloadable desktop build exported from the same project.
 - G5. Dedicated game server hosted on the owner's **existing VPS**.
@@ -67,8 +70,10 @@ in this design serves that promise.
   dedicated server must use Godot's WebSocket multiplayer. The game page
   is HTTPS, so the socket must be `wss://` (TLS).
 - First web load is a **~50–80 MB one-time download** (cached after).
-- Web builds run **slower than native** (~2–4×); budgets assume a modest
-  5-year-old desktop, not a potato.
+- Web builds run **slower than native** (~2–4×). Target hardware is
+  known: the friend group plays on **Windows with Chrome/Edge/Firefox** —
+  the best-supported web path; budgets still aim at a modest 5-year-old
+  laptop.
 - Cloudflare Pages static hosting **per-file size limit (~25 MiB)** may
   reject a Godot wasm file; this must be verified at build time.
 - Owner's VPS: a single Linux box, no special hardware; server runs as a
@@ -141,6 +146,12 @@ in this design serves that promise.
 | Session flow | Menu → room → world/stage select → play → results → next |
 | Progression | Stage completion → coins → hats/cosmetics; saved server-side |
 | Art source | CC0 low-poly packs, recolored to a single palette |
+| Movement feel | Tight platformer control while alive; ragdoll flop on failure and big impacts |
+| Fail rules | Fast individual respawn; a stage clears when **all** players reach the goal; whole-group resets only for stage-wide mechanics (timers) |
+| Audience hardware | Windows laptops/desktops, Chrome/Edge/Firefox |
+| Domain | Owner has a domain for the VPS (game page + `wss://` server) |
+| Audio (my call) | Thin CC0 SFX layer (flops, boings, coins) + one music track |
+| Join/leave (my call) | Joining works between stages (latecomers wait in lobby); stages must be beatable at 2, 3, and 4 players; below 2 players a stage restarts |
 | Audience | The owner's friend group; fun first, lean scope |
 
 ## First-playable content (my proposal — correct me)
@@ -161,7 +172,10 @@ before/during planning:
 - **6–10 hats + 4 palette skins** in the wardrobe; coins per stage
   first-completion + small replay reward.
 - **Rooms:** create → 4-character code; join by code; name + color pick;
-  host controls stage selection; everyone restarts together on wipe.
+  host controls stage selection; joining works between stages (late
+  arrivals wait in the lobby until the next stage loads); stages are
+  designed and verified beatable at 2, 3, and 4 players; a stage
+  restarts if the room drops below 2 players mid-stage.
 - **Persistence:** JSON per display name on the VPS (coins, owned items,
   per-stage best time/clear count). No auth — the VPS is for friends; a
   name collision/overwrite is accepted for v1.
@@ -172,15 +186,16 @@ before/during planning:
   physics authority model (server-sim with client prediction for own
   avatar, or lockstep — builder's call, comedy must stay responsive);
   interpolation.
-- Grab/ragdoll implementation details (Godot physics vs. lightweight
-  fake ragdoll when the browser build proves too slow).
+- Grab/ragdoll implementation details on top of the tight base
+  controller (real physics ragdoll vs. lightweight fake flop if the
+  browser build proves too slow); grab/carry verb tuning.
 - Stage/world data format and enumeration; checkpoint scheme.
 - Actual asset pack choice and palette.
 - Cloudflare Pages headers (COOP/COEP for SharedArrayBuffer) and the
   per-file-limit verification; **fallback path: serve the web build from
   the VPS next to the game server.**
-- TLS termination for `wss://` (Cloudflare proxy fronting the VPS, or
-  Caddy + Let's Encrypt on the VPS).
+- TLS termination for `wss://` on the owner's domain (Cloudflare proxy
+  fronting the VPS, or Caddy + Let's Encrypt on the VPS).
 - Deploy script + systemd unit for the headless server; update flow.
 - Web export sizing budget (progressive loading if first load feels slow).
 - In-HUD/level UI layout, results screen copy, wardrobe UI.
