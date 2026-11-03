@@ -139,6 +139,9 @@ func _ready() -> void:
 	if cli.has("--selftest") and cli.has("export"):
 		_run_export_check()
 		return
+	if cli.has("--selftest") and cli.has("desktop_preset"):
+		_run_desktop_check()
+		return
 	if cli.has("--selftest") and cli.has("ui"):
 		_run_ui_selftest()
 		return
@@ -394,6 +397,41 @@ func _run_export_check() -> void:
 	else:
 		push_error("EXPORT_WEB_FAIL preset=%d headers=%d loading=%d" % [p, h, loading])
 		get_tree().quit(1)
+
+
+## Offline Windows desktop-preset self-test (issue #22). The acceptance
+## probe runs `godot --headless --path . -- --selftest desktop_preset`,
+## which boots the main scene, so the main-scene root owns this branch:
+## run the parse-level check_desktop_preset static (no export templates
+## installed in CI) and print the DESKTOP_OK line shared with the probe.
+## Quits 1 on failure; touches no request/route/health paths.
+func _run_desktop_check() -> void:
+	var preset := check_desktop_preset("res://export_presets.cfg")
+	var p := int(preset.get("preset", 0))
+	if p == 1:
+		print("DESKTOP_OK preset=%d" % p)
+		get_tree().quit(0)
+	else:
+		push_error("DESKTOP_FAIL preset=%d" % p)
+		get_tree().quit(1)
+
+
+## --- Windows desktop export surface (issue #22, parse-level, no templates) ---
+## Template-free sibling of check_export_preset: scans cfg_path via
+## ConfigFile for a preset.N section whose name contains "Windows" with
+## platform == "Windows Desktop". Returns {preset=0/1}.
+static func check_desktop_preset(cfg_path: String) -> Dictionary:
+	var cfg := ConfigFile.new()
+	if cfg.load(cfg_path) != OK:
+		return {"preset": 0}
+	for section in cfg.get_sections():
+		if not section.begins_with("preset.") or section.ends_with(".options"):
+			continue
+		var pname := str(cfg.get_value(section, "name", ""))
+		var platform := str(cfg.get_value(section, "platform", ""))
+		if pname.contains("Windows") and platform == "Windows Desktop":
+			return {"preset": 1}
+	return {"preset": 0}
 
 
 ## Offline controller self-test (issue #3). The acceptance probe runs
