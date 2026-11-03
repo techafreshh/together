@@ -23,6 +23,12 @@ const flop_duration_ms: int = 800
 const respawn_delay_ms: int = 1200
 ## Downward speed (m/s) above which a landing triggers the flop.
 const hard_impact_speed: float = 22.0
+## Carry slow factor: carrier run speed while holding a mannequin.
+const carry_speed_factor: float = 0.55
+## Fixed throw impulse (m/s) applied to a released mannequin.
+const throw_impulse: float = 9.0
+## Max grab distance (m) between carrier and mannequin.
+const grab_range: float = 2.5
 
 
 ## Symmetric-arc air-time estimate in ms (rise gravity only), used for the
