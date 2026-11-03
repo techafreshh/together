@@ -19,6 +19,8 @@ extends Node
 ## plain-HTTP health and the /ws upgrade share one port.
 
 const ConfigScript := preload("res://autoload/Config.gd")
+const ControllerScript := preload("res://actors/player/controller.gd")
+const TuningScript := preload("res://actors/player/tuning.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -34,7 +36,11 @@ var _port: int = 8080
 
 
 func _ready() -> void:
-	var parsed: Dictionary = ConfigScript.parse_serve_args(OS.get_cmdline_user_args())
+	var cli: PackedStringArray = OS.get_cmdline_user_args()
+	if cli.has("--selftest") and cli.has("controller"):
+		_run_controller_selftest()
+		return
+	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
 		push_error("Usage: godot --headless --path . -- --serve --port <port>")
 		get_tree().quit(1)
@@ -200,6 +206,20 @@ static func _compute_ws_accept(key: String) -> String:
 
 static func _build_health_body() -> String:
 	return JSON.stringify({"ok": true, "version": ConfigScript.VERSION})
+
+
+## Offline controller self-test (issue #3). The acceptance probe runs
+## `godot --headless --path . -- --selftest controller`, which boots the
+## main scene, so the main-scene root owns this branch: run the
+## synchronous logic checks shared with the test stage and quit.
+func _run_controller_selftest() -> void:
+	var result: Array = ControllerScript.run_selftest()
+	var failed := int(result[1])
+	if failed == 0:
+		print("CONTROLLER_OK jump_arc_ms=%d coyote_ms=%d" % [TuningScript.jump_arc_ms(), TuningScript.coyote_ms])
+	else:
+		push_error("CONTROLLER_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
 
 
 static func _header_end(buf: PackedByteArray) -> int:
