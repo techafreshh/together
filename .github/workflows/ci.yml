@@ -52,6 +52,7 @@ jobs:
           godot --headless --path . --script res://tests/test_audiovisual_logic.gd
           godot --headless --path . --script res://tests/test_export_logic.gd
           godot --headless --path . --script res://tests/test_desktop_logic.gd
+          godot --headless --path . --script res://tests/test_config_logic.gd
           godot --headless --path . -- --selftest audiovisual
           godot --headless --path . -- --selftest perf
 
@@ -68,6 +69,27 @@ jobs:
           godot --headless --path . -- --selftest desktop_preset > /tmp/desktop_preset.log 2>&1
           cat /tmp/desktop_preset.log
           grep -q 'DESKTOP_OK preset=1' /tmp/desktop_preset.log
+
+      - name: Config selftest (parse-level, no sockets)
+        timeout-minutes: 5
+        run: |
+          godot --headless --path . -- --selftest config --port 9419 --data-dir /tmp/together_cfg_probe --max-rooms 7 > /tmp/config_probe.log 2>&1
+          cat /tmp/config_probe.log
+          grep -q 'CONFIG_OK port=1 data_dir=1 max_rooms=1' /tmp/config_probe.log
+
+      - name: Deploy dry-run, unit file, and ops doc
+        timeout-minutes: 5
+        run: |
+          test -x deploy.sh
+          ./deploy.sh --dry-run > /tmp/deploy_dry_run.log 2>&1
+          cat /tmp/deploy_dry_run.log
+          grep -q 'DRY_RUN_OK' /tmp/deploy_dry_run.log
+          grep -q 'BUILD_OK' /tmp/deploy_dry_run.log
+          grep -q 'UPLOAD_OK' /tmp/deploy_dry_run.log
+          grep -q 'RESTART_OK' /tmp/deploy_dry_run.log
+          grep -q 'Restart=always' deploy/systemd/together.service
+          grep -q 'WantedBy=multi-user.target' deploy/systemd/together.service
+          grep -q './deploy server' docs/ops.md
 
       - name: Skeleton health probe (GET / expects 200)
         timeout-minutes: 5
