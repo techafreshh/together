@@ -30,6 +30,8 @@ const BoostScript := preload("res://actors/props/boost.gd")
 const SeesawScript := preload("res://actors/props/seesaw.gd")
 const LeverScript := preload("res://actors/props/lever.gd")
 const SfxScript := preload("res://autoload/Sfx.gd")
+const AudiovisualScript := preload("res://server/audiovisual.gd")
+const PerfScript := preload("res://server/perf.gd")
 const Stage01Script := preload("res://stages/world1/stage_01.gd")
 const Stage02Script := preload("res://stages/world1/stage_02.gd")
 const Stage03Script := preload("res://stages/world1/stage_03.gd")
@@ -93,6 +95,12 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("sfx"):
 		_run_sfx_selftest()
+		return
+	if cli.has("--selftest") and cli.has("audiovisual"):
+		_run_audiovisual_selftest()
+		return
+	if cli.has("--selftest") and (cli.has("perf") or cli.has("performance")):
+		_run_perf_selftest()
 		return
 	if cli.has("--selftest") and cli.has("rooms"):
 		_run_rooms_selftest()
@@ -394,6 +402,42 @@ func _run_sfx_selftest() -> void:
 	else:
 		push_error("SFX_FAIL failed=%d" % failed)
 	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline audiovisual self-test (issue #20). The acceptance probe runs
+## `godot --headless --path . -- --selftest audiovisual`, which boots the
+## main scene, so the main-scene root owns this branch: prove the single
+## looping music track, the full SFX set, and the palette recolor hold,
+## then print the AV_OK line shared with the probe. Quits 1 on failure;
+## touches no request/route/health paths.
+func _run_audiovisual_selftest() -> void:
+	var result: Array = AudiovisualScript.run_selftest()
+	var failed := int(result[1])
+	if failed == 0:
+		print("AV_OK music=1 sfx>=8 palette=1")
+	else:
+		push_error("AV_FAIL failed=%d" % failed)
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Native perf self-test stub (issue #20). The acceptance probe runs
+## `godot --headless --path . -- --selftest perf`, which boots the main
+## scene, so the main-scene root owns this branch: run the budget-const
+## checks, then print PERF_SKIPPED_HEADLESS=1 under headless CI (no vsync
+## or GPU timing there) or FPS_OK on real hardware. Never crashes; quits
+## 1 only when the const checks themselves fail.
+func _run_perf_selftest() -> void:
+	var result: Array = PerfScript.run_selftest()
+	var failed := int(result[1])
+	if failed != 0:
+		push_error("PERF_FAIL failed=%d" % failed)
+		get_tree().quit(1)
+		return
+	if PerfScript.is_headless():
+		print("PERF_SKIPPED_HEADLESS=1")
+	else:
+		print("FPS_OK")
+	get_tree().quit(0)
 
 
 func _run_flop_selftest() -> void:

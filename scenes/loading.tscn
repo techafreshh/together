@@ -1,0 +1,33 @@
+; Net. autoload placeholder (Net.room_state drives future staged progress)
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/loading.gd" id="1_loading"]
+
+[node name="Loading" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_loading")
+
+[node name="StatusLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 32.0
+grow_horizontal = 2
+text = "Loading..."
+
+[node name="LoadBar" type="ProgressBar" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 40.0
+offset_bottom = 64.0
+grow_horizontal = 2
+min_value = 0.0
+max_value = 1.0
+value = 0.0
+show_percentage = true
