@@ -1,0 +1,62 @@
+; Net. autoload placeholder (Net.connect_game / Net.push_snapshots)
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/lobby.gd" id="1_lobby"]
+
+[node name="Lobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby")
+
+[node name="PlayerList" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 160.0
+grow_horizontal = 2
+
+[node name="ReadyButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 168.0
+offset_bottom = 200.0
+grow_horizontal = 2
+text = "Ready"
+
+[node name="StartButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 208.0
+offset_bottom = 240.0
+grow_horizontal = 2
+text = "Start"
+
+[node name="StagePicker" type="OptionButton" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 248.0
+offset_bottom = 280.0
+grow_horizontal = 2
+
+[node name="BestsLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 288.0
+offset_bottom = 352.0
+grow_horizontal = 2
+
+[node name="StatusLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 360.0
+offset_bottom = 392.0
+grow_horizontal = 2

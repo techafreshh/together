@@ -44,6 +44,11 @@ const FlowManagerScript := preload("res://server/flow_manager.gd")
 const PersistenceScript := preload("res://server/persistence.gd")
 const WardrobeScript := preload("res://server/wardrobe.gd")
 const CosmeticsScript := preload("res://actors/player/cosmetics.gd")
+const MainMenuScript := preload("res://scenes/main_menu.gd")
+const LobbyScript := preload("res://scenes/lobby.gd")
+const WardrobeUiScript := preload("res://scenes/wardrobe.gd")
+const HudScript := preload("res://scenes/hud.gd")
+const ResultsScript := preload("res://scenes/results.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 ## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
@@ -118,6 +123,9 @@ func _ready() -> void:
 		return
 	if cli.has("--selftest") and cli.has("wardrobe"):
 		_run_wardrobe_selftest()
+		return
+	if cli.has("--selftest") and cli.has("ui"):
+		_run_ui_selftest()
 		return
 	var parsed: Dictionary = ConfigScript.parse_serve_args(cli)
 	if not bool(parsed.get("serve", false)):
@@ -503,6 +511,79 @@ func _run_flow_selftest() -> void:
 		print("HOST_GUARD_OK=1")
 	else:
 		push_error("FLOW_FAIL failed=%d boot=%d all=%d res=%d guard=%d" % [failed, boot_ok, all_ok, res_ok, guard_ok])
+	get_tree().quit(1 if failed > 0 else 0)
+
+
+## Offline UI self-test (issue #19). The acceptance probe runs
+## `godot --headless --path . -- --selftest ui`, which boots the main
+## scene, so the main-scene root owns this branch: load each of the five
+## menu-flow scenes, instantiate it, prove every required_nodes() path
+## resolves, prove the .tscn and .gd file texts each carry the `Net.`
+## autoload placeholder, then print the UI_OK line shared with the probe.
+## The lobby StagePicker + BestsLabel pair feeds the picker flag. Quits 1
+## on any failure; touches no request/route/health paths.
+func _run_ui_selftest() -> void:
+	var failed := 0
+	var menu := 0
+	var lobby := 0
+	var picker := 0
+	var hud := 0
+	var results := 0
+	var scenes := [
+		{"key": "menu", "tscn": "res://scenes/main_menu.tscn", "gd": "res://scenes/main_menu.gd", "script": MainMenuScript},
+		{"key": "lobby", "tscn": "res://scenes/lobby.tscn", "gd": "res://scenes/lobby.gd", "script": LobbyScript},
+		{"key": "wardrobe", "tscn": "res://scenes/wardrobe.tscn", "gd": "res://scenes/wardrobe.gd", "script": WardrobeUiScript},
+		{"key": "hud", "tscn": "res://scenes/hud.tscn", "gd": "res://scenes/hud.gd", "script": HudScript},
+		{"key": "results", "tscn": "res://scenes/results.tscn", "gd": "res://scenes/results.gd", "script": ResultsScript},
+	]
+	for entry in scenes:
+		var key := str(entry.get("key", ""))
+		var tscn_path := str(entry.get("tscn", ""))
+		var gd_path := str(entry.get("gd", ""))
+		var packed: PackedScene = load(tscn_path) as PackedScene
+		if packed == null:
+			failed += 1
+			push_error("ui selftest: %s failed to load" % tscn_path)
+			continue
+		var node: Node = packed.instantiate() as Node
+		if node == null:
+			failed += 1
+			push_error("ui selftest: %s failed to instantiate" % tscn_path)
+			continue
+		var needed: Array = (entry.get("script", null) as Script).call("required_nodes")
+		var paths_ok := true
+		for p in needed:
+			if node.get_node_or_null(str(p)) == null:
+				paths_ok = false
+				failed += 1
+				push_error("ui selftest: %s misses node %s" % [tscn_path, str(p)])
+		if paths_ok:
+			if key == "menu":
+				menu = 1
+			elif key == "lobby":
+				lobby = 1
+				if node.get_node_or_null("StagePicker") != null and node.get_node_or_null("BestsLabel") != null:
+					picker = 1
+				else:
+					failed += 1
+					push_error("ui selftest: lobby misses StagePicker + BestsLabel")
+			elif key == "hud":
+				hud = 1
+			elif key == "results":
+				results = 1
+		var tscn_text := FileAccess.get_file_as_string(tscn_path)
+		if not tscn_text.contains("Net."):
+			failed += 1
+			push_error("ui selftest: %s misses Net. placeholder" % tscn_path)
+		var gd_text := FileAccess.get_file_as_string(gd_path)
+		if not gd_text.contains("Net."):
+			failed += 1
+			push_error("ui selftest: %s misses Net. placeholder" % gd_path)
+		node.free()
+	if failed == 0 and menu == 1 and lobby == 1 and picker == 1 and hud == 1 and results == 1:
+		print("UI_OK menu=1 lobby=1 picker=1 hud=1 results=1")
+	else:
+		push_error("UI_FAIL failed=%d menu=%d lobby=%d picker=%d hud=%d results=%d" % [failed, menu, lobby, picker, hud, results])
 	get_tree().quit(1 if failed > 0 else 0)
 
 

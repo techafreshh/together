@@ -1,4 +1,7 @@
+; Net. autoload placeholder (Net.connect_game / Net.push_snapshots)
 [gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/wardrobe.gd" id="1_wardrobe"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_preview"]
 albedo_color = Color(0.94902, 0.929412, 0.890196, 1)
@@ -9,6 +12,7 @@ radius = 0.4
 height = 1.7
 
 [node name="Wardrobe" type="Node3D"]
+script = ExtResource("1_wardrobe")
 
 [node name="HatAnchor" type="Marker3D" parent="."]
 

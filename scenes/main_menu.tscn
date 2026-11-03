@@ -1,0 +1,72 @@
+; Net. autoload placeholder (Net.connect_game / Net.push_snapshots)
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/main_menu.gd" id="1_mainmenu"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_mainmenu")
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 56.0
+grow_horizontal = 2
+text = "Together"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NameEdit" type="LineEdit" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 72.0
+offset_bottom = 104.0
+placeholder_text = "Name"
+
+[node name="CodeEdit" type="LineEdit" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 112.0
+offset_bottom = 144.0
+placeholder_text = "Room code"
+max_length = 4
+
+[node name="ColorOption" type="OptionButton" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 152.0
+offset_bottom = 184.0
+item_count = 4
+popup/item_0/text = &"Coral"
+popup/item_0/id = 0
+popup/item_1/text = &"Blue"
+popup/item_1/id = 1
+popup/item_2/text = &"Leaf"
+popup/item_2/id = 2
+popup/item_3/text = &"Grape"
+popup/item_3/id = 3
+
+[node name="HostButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 200.0
+offset_bottom = 232.0
+text = "Host"
+
+[node name="JoinButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 240.0
+offset_bottom = 272.0
+text = "Join"

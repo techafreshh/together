@@ -45,6 +45,7 @@ jobs:
           godot --headless --path . --script res://tests/test_stages12_logic.gd
           godot --headless --path . --script res://tests/test_stages34_logic.gd
           godot --headless --path . --script res://tests/test_stages56_logic.gd
+          godot --headless --path . --script res://tests/test_ui_logic.gd
           godot --headless --path . --script res://tests/test_stages78_logic.gd
           godot --headless --path . --script res://tests/test_persist_logic.gd
           godot --headless --path . --script res://tests/test_wardrobe_logic.gd
