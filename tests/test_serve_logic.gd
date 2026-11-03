@@ -14,6 +14,7 @@ var failed := 0
 func _initialize() -> void:
 	for t: String in [
 		"test_ws_accept_known_vector",
+		"test_ws_close_frame",
 		"test_route_table",
 		"test_health_body",
 		"test_parse_serve_args",
@@ -50,6 +51,16 @@ func test_ws_accept_known_vector() -> bool:
 		"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
 		"rfc6455 accept vector"
 	)
+	return true
+
+
+## The bytes sent right after the 101 headers must form a valid
+## server-to-client WS close frame: FIN set, opcode 0x8, empty payload.
+func test_ws_close_frame() -> bool:
+	assert_eq(Serve.WS_CLOSE_FRAME, PackedByteArray([0x88, 0x00]), "close frame bytes")
+	assert_eq(int(Serve.WS_CLOSE_FRAME[0]) & 0x80, 0x80, "close frame FIN set")
+	assert_eq(int(Serve.WS_CLOSE_FRAME[0]) & 0x0F, 0x08, "close frame opcode is 0x8")
+	assert_eq(int(Serve.WS_CLOSE_FRAME[1]), 0x00, "close frame empty unmasked payload")
 	return true
 
 

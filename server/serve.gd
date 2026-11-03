@@ -3,10 +3,13 @@ extends Node
 ##
 ## Boots via `godot --headless --path . -- --serve --port $PORT` and stays
 ## foreground. Serves plain-HTTP `GET /` health JSON, answers the RFC 6455
-## WebSocket upgrade on `/ws` with `101 Switching Protocols` (then closes
-## the connection so plain-HTTP clients observe the completed handshake
-## instead of hanging on a held-open socket), and answers 4xx JSON for
-## everything else. This responder never emits 5xx: malformed bytes get
+## WebSocket upgrade on `/ws` with `101 Switching Protocols` followed by a
+## WebSocket close frame (then a TCP close, since the skeleton carries no
+## game frames yet), and answers 4xx JSON for everything else. The two
+## post-handshake bytes matter: plain-HTTP clients (curl) treat a bare 101
+## as interim and report "empty reply" (exit 52) or hang (exit 28) unless
+## response bytes complete the transfer, while WS clients see a valid
+## close handshake. This responder never emits 5xx: malformed bytes get
 ## 400, unknown routes get 404, and every handler path is guarded.
 ##
 ## Design: parsing (_parse_request), routing (_route_request) and the accept
@@ -18,6 +21,10 @@ extends Node
 const ConfigScript := preload("res://autoload/Config.gd")
 
 const WS_GUID := "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+## Server-initiated WebSocket close frame (FIN + opcode 0x8, empty payload,
+## unmasked as required for server-to-client frames). Sent right after the
+## 101 headers so the upgrade completes with a valid close handshake.
+static var WS_CLOSE_FRAME := PackedByteArray([0x88, 0x00])
 const READ_DEADLINE_MSEC := 2000
 const MAX_HEADER_BYTES := 16384
 
@@ -102,11 +109,12 @@ func _handshake_ws(conn: StreamPeerTCP, key: String) -> void:
 	var head := "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n" % _compute_ws_accept(key)
 	if conn.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 		return
-	# The handshake bytes are the whole upgrade as far as plain-HTTP clients
-	# (curl, read-to-EOF probes) can observe: closing lets them complete with
-	# 101 instead of hanging on an open socket. A real WS client sees a normal
-	# 101 followed by EOF.
-	conn.put_data(head.to_ascii_buffer())
+	# One packet: valid 101 headers plus a WS close frame. Plain-HTTP
+	# clients (curl -w '%{http_code}') need trailing bytes plus EOF to report
+	# 101 with exit 0 instead of "empty reply" (52); WS clients observe a
+	# normal 101 followed by a protocol-clean close. Game frames arrive in
+	# a later lap, so the skeleton closes the TCP stream right after.
+	conn.put_data(head.to_ascii_buffer() + WS_CLOSE_FRAME)
 	conn.disconnect_from_host()
 
 

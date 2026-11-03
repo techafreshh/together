@@ -92,17 +92,27 @@ expected = base64.b64encode(
 ).decode()
 assert accept == expected, f"accept mismatch {accept!r} != {expected!r}"
 assert dt < 2.0, f"/ws took {dt:.2f}s"
-# The handshake response must complete promptly (server closes after 101)
-# so plain-HTTP clients waiting for EOF never hang.
+# The handshake must complete promptly: the server sends a WS close frame
+# after the 101 headers (so plain-HTTP clients like curl observe transfer
+# completion instead of "empty reply") and then closes the TCP stream.
+# Bytes after the header terminator may already sit in `resp` (one packet).
 s.settimeout(5)
 t1 = time.monotonic()
+tail = resp.split(b"\r\n\r\n", 1)[1]
 try:
-    tail = s.recv(4096)
+    while len(tail) < 2:
+        chunk = s.recv(4096)
+        if not chunk:
+            break
+        tail += chunk
 except socket.timeout:
-    raise SystemExit("timed out waiting for /ws close after 101")
+    raise SystemExit("timed out waiting for /ws close frame after 101")
 dt2 = time.monotonic() - t1
-assert tail == b"", f"expected EOF after 101, got {tail!r}"
+assert tail == bytes([0x88, 0x00]), f"expected WS close frame after 101, got {tail!r}"
 assert dt2 < 5.0, f"/ws close took {dt2:.2f}s"
+s.settimeout(5)
+rest = s.recv(4096)
+assert rest == b"", f"expected EOF after close frame, got {rest!r}"
 s.close()
 print(f"ws 101 ok ({dt * 1000:.0f}ms, close {dt2 * 1000:.0f}ms)")
 EOF
