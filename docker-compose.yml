@@ -1,0 +1,26 @@
+# Compose stack (issue #51): `game` is the headless server, `cloudflared`
+# is an opt-in tunnel started only with `--profile tunnel`.
+services:
+  game:
+    build: .
+    ports:
+      - "${PORT:-8080}:8080"
+    restart: unless-stopped
+    environment:
+      TOGETHER_DATA_DIR: ${TOGETHER_DATA_DIR:-/data}
+      TOGETHER_MAX_ROOMS: ${TOGETHER_MAX_ROOMS:-64}
+      TOGETHER_TLS_MODE: ${TOGETHER_TLS_MODE:-off}
+    volumes:
+      - game-data:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles:
+      - tunnel
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - game
+
+volumes:
+  game-data:
