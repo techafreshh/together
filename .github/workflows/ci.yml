@@ -99,6 +99,21 @@ jobs:
           grep -q 'WantedBy=multi-user.target' deploy/systemd/together.service
           grep -q './deploy server' docs/ops.md
 
+      - name: Compose stack validation
+        timeout-minutes: 5
+        run: |
+          docker compose version
+          docker compose config > /tmp/compose_config.log 2>&1
+          cat /tmp/compose_config.log
+          grep -qF '${PORT:-8080}:8080' docker-compose.yml
+          grep -q 'unless-stopped' docker-compose.yml
+          grep -q 'cloudflare/cloudflared:latest' docker-compose.yml
+          grep -q 'tunnel --no-autoupdate run --token' docker-compose.yml
+          grep -q 'tunnel' docker-compose.yml
+          TUNNEL_TOKEN=probe docker compose --profile tunnel config > /tmp/compose_tunnel.log 2>&1
+          cat /tmp/compose_tunnel.log
+          grep -q 'cloudflared' /tmp/compose_tunnel.log
+
       - name: Skeleton health probe (GET / expects 200)
         timeout-minutes: 5
         run: |
@@ -118,3 +133,7 @@ jobs:
       - name: Black-box smoke test
         timeout-minutes: 10
         run: bash tests/smoke_serve.sh
+
+      - name: Compose smoke test
+        timeout-minutes: 15
+        run: bash tests/smoke_compose.sh
