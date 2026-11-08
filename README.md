@@ -22,6 +22,18 @@ Co-op party platformer on Godot 4.7: small squads clear eight World 1 co-op stag
 
 ## Quickstart
 
+Docker path (nothing but Docker needed):
+
+```sh
+git clone https://github.com/techafreshh/together.git && cd together
+docker compose up --build
+```
+
+Then connect to `ws://localhost:${PORT:-8080}/ws` (host port defaults
+to `8080`; override with `PORT=9001 docker compose up --build`).
+
+Native Godot path (needs `godot` on `PATH`):
+
 ```sh
 git clone https://github.com/techafreshh/together.git && cd together
 godot --headless --path . --import
@@ -102,12 +114,17 @@ tools/build_desktop.sh
 
 Exports the `Windows` preset to `build/windows/Together.exe`, stamps `Config.VERSION` into `build/windows/VERSION.txt`, and zips both to `dist/together-windows.zip`. Honors `$GODOT`. CI only runs the template-free parse check (`--selftest desktop_preset`).
 
-Deploy the headless server (full operator guide: `docs/ops.md`):
+Deploy the headless server as a compose stack (full operator guide:
+`docs/ops.md` — the VPS needs nothing but Docker):
 
 ```sh
 TOGETHER_HOST=vps.example.com ./deploy.sh server
+docker compose up --build   # same stack locally
 ./deploy.sh --dry-run   # markers only, no network
 ```
+
+The systemd unit (`deploy/systemd/together.service`) is legacy
+reference only; compose is the supported deploy path.
 
 ## Project structure
 
@@ -118,7 +135,7 @@ TOGETHER_HOST=vps.example.com ./deploy.sh server
 - `actors/` — player controller, ragdoll, grabber, props, cosmetics.
 - `assets/` — hats, skins, music, sound effects.
 - `web/` — Pages headers and loading indicator for the web build.
-- `tools/` — desktop build script. `deploy.sh` + `deploy/systemd/` — one-command VPS deploy.
+- `tools/` — desktop build script. `Dockerfile` + `docker-compose.yml` + `deploy.sh` — compose VPS deploy (`deploy/systemd/` is legacy reference).
 - `docs/` — join guide, ops runbook, web fallback, palette. `tests/` — logic runners plus `smoke_serve.sh`.
 
 ## Limitations
